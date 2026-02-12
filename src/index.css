@@ -1,0 +1,164 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 200 20% 15%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 200 20% 15%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 200 20% 15%;
+
+    --primary: 168 76% 40%;
+    --primary-foreground: 0 0% 100%;
+    --primary-blue: 200 80% 45%;
+
+    --secondary: 24 95% 53%;
+    --secondary-foreground: 0 0% 100%;
+
+    --muted: 180 20% 96%;
+    --muted-foreground: 200 10% 45%;
+
+    --accent: 168 50% 95%;
+    --accent-foreground: 168 76% 30%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 180 20% 90%;
+    --input: 180 20% 90%;
+    --ring: 168 76% 40%;
+
+    --radius: 0.75rem;
+
+    /* Custom travel theme variables */
+    --gradient-hero: linear-gradient(135deg, hsl(168 76% 40% / 0.9) 0%, hsl(200 80% 45% / 0.95) 100%);
+    --gradient-accent: linear-gradient(135deg, hsl(168 76% 40%) 0%, hsl(185 70% 42%) 50%, hsl(200 80% 45%) 100%);
+    --gradient-warm: linear-gradient(135deg, hsl(24 95% 53%) 0%, hsl(30 90% 55%) 100%);
+    --gradient-card: linear-gradient(180deg, hsl(0 0% 100%) 0%, hsl(180 20% 98%) 100%);
+    --shadow-soft: 0 4px 20px -4px hsl(200 20% 15% / 0.1);
+    --shadow-elevated: 0 12px 40px -8px hsl(200 20% 15% / 0.15);
+    --shadow-glow: 0 0 40px hsl(168 76% 40% / 0.2);
+
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+
+  .dark {
+    --background: 200 25% 8%;
+    --foreground: 180 20% 95%;
+
+    --card: 200 20% 12%;
+    --card-foreground: 180 20% 95%;
+
+    --popover: 200 20% 12%;
+    --popover-foreground: 180 20% 95%;
+
+    --primary: 168 70% 45%;
+    --primary-foreground: 0 0% 100%;
+    --primary-blue: 200 75% 50%;
+
+    --secondary: 24 90% 55%;
+    --secondary-foreground: 0 0% 100%;
+
+    --muted: 200 15% 18%;
+    --muted-foreground: 180 10% 60%;
+
+    --accent: 168 40% 20%;
+    --accent-foreground: 168 70% 70%;
+
+    --destructive: 0 70% 45%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 200 15% 20%;
+    --input: 200 15% 20%;
+    --ring: 168 70% 45%;
+
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-family: 'Inter', sans-serif;
+  }
+}
+
+@layer utilities {
+  .text-gradient-primary {
+    @apply bg-clip-text text-transparent;
+    background-image: var(--gradient-accent);
+  }
+
+  .text-gradient-warm {
+    @apply bg-clip-text text-transparent;
+    background-image: linear-gradient(135deg, hsl(24 95% 53%) 0%, hsl(30 90% 55%) 100%);
+  }
+
+  .bg-gradient-hero {
+    background: var(--gradient-accent);
+  }
+
+  .bg-gradient-warm {
+    background: var(--gradient-warm);
+  }
+
+  .shadow-soft {
+    box-shadow: var(--shadow-soft);
+  }
+
+  .shadow-elevated {
+    box-shadow: var(--shadow-elevated);
+  }
+
+  .shadow-glow {
+    box-shadow: var(--shadow-glow);
+  }
+}
+
+@layer components {
+  .nav-link {
+    @apply text-foreground/70 hover:text-foreground transition-colors duration-200 font-medium;
+  }
+
+  .nav-link-active {
+    @apply text-primary font-semibold;
+  }
+
+  .feature-card {
+    @apply bg-card rounded-2xl p-6 shadow-soft hover:shadow-elevated transition-all duration-300 hover:-translate-y-1 border border-border/50;
+  }
+
+  .hero-overlay {
+    background: linear-gradient(
+      to bottom,
+      hsl(200 25% 8% / 0.4) 0%,
+      hsl(200 25% 8% / 0.6) 50%,
+      hsl(200 25% 8% / 0.8) 100%
+    );
+  }
+}

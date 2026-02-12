@@ -1,0 +1,7 @@
+project_id = "zchlibzgogxsvocxtmkq"
+
+[functions.generate-itinerary]
+verify_jwt = false
+
+[functions.planner-step]
+verify_jwt = false

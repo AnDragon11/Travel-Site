@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(command -v:*)",
+      "Bash(npm run build:*)",
+      "Bash(bun run build)",
+      "Bash(git --version:*)",
+      "Bash(git config:*)",
+      "Bash(gh:*)",
+      "Bash(git add:*)"
+    ]
+  }
+}
