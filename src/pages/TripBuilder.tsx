@@ -16,7 +16,7 @@ import { cn } from "@/lib/utils";
 import {
   Plane, Hotel, Utensils, Camera, MapPin, Clock, Plus, Trash2, Pencil, Save,
   Ticket, Coffee, ShoppingBag, Bus, Car, Train, Footprints, ImagePlus,
-  Calendar, Users, ArrowLeft, GripVertical,
+  Calendar, Users, ArrowLeft, GripVertical, Star, Heart, Tag,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -61,6 +61,8 @@ export interface BuilderActivity {
   cost: number;
   notes: string;
   image_url: string;
+  photos?: string[];        // Additional photos for trip diary
+  review?: string;          // User review of this activity
   transportType: string;
   transportDuration: string;
 }
@@ -692,6 +694,57 @@ const TripBuilder = () => {
                       />
                       <span className="text-sm text-primary-foreground/70">travelers</span>
                     </div>
+
+                    {/* Rating Stars */}
+                    <div className="flex items-center gap-1 bg-primary-foreground/10 rounded-lg px-3 py-1.5">
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <button
+                          key={star}
+                          type="button"
+                          onClick={() => setTrip((p) => ({ ...p, rating: star }))}
+                          className="hover:scale-110 transition-transform"
+                        >
+                          <Star
+                            className={cn(
+                              "w-4 h-4",
+                              trip.rating && star <= trip.rating
+                                ? "fill-yellow-400 text-yellow-400"
+                                : "text-primary-foreground/30 hover:text-yellow-400"
+                            )}
+                          />
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Favorite */}
+                    <button
+                      type="button"
+                      onClick={() => setTrip((p) => ({ ...p, isFavorite: !p.isFavorite }))}
+                      className="flex items-center gap-1.5 bg-primary-foreground/10 hover:bg-primary-foreground/20 rounded-lg px-3 py-1.5 transition-colors"
+                    >
+                      <Heart
+                        className={cn(
+                          "w-4 h-4",
+                          trip.isFavorite
+                            ? "fill-red-400 text-red-400"
+                            : "text-primary-foreground/70"
+                        )}
+                      />
+                      <span className="text-sm text-primary-foreground/70">
+                        {trip.isFavorite ? 'Favorited' : 'Favorite'}
+                      </span>
+                    </button>
+                  </div>
+
+                  {/* Trip Review */}
+                  <div className="mt-3">
+                    <textarea
+                      value={trip.review || ''}
+                      onChange={(e) => setTrip((p) => ({ ...p, review: e.target.value }))}
+                      placeholder="Add a review or notes about this trip..."
+                      className="w-full bg-primary-foreground/10 rounded-lg px-3 py-2 text-sm text-primary-foreground placeholder:text-primary-foreground/40 border-none outline-none resize-none"
+                      rows={2}
+                    />
                   </div>
                 </div>
 

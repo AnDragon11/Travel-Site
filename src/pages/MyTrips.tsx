@@ -3,13 +3,17 @@ import { Link } from "react-router-dom";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
-import { MapPin, Calendar, Users, Trash2, Pencil, Sparkles, Plus, Briefcase } from "lucide-react";
-import { loadTrips, deleteTrip } from "@/services/storageService";
+import { MapPin, Calendar, Users, Trash2, Pencil, Sparkles, Plus, Briefcase, Star, Heart, Clock, Archive } from "lucide-react";
+import { loadTrips, deleteTrip, saveTrip } from "@/services/storageService";
 import { SavedTrip } from "@/lib/tripTypes";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
+
+type TabType = 'all' | 'future' | 'past' | 'favorites';
 
 const MyTrips = () => {
   const [trips, setTrips] = useState<SavedTrip[]>([]);
+  const [activeTab, setActiveTab] = useState<TabType>('all');
 
   const loadAllTrips = () => {
     const allTrips = loadTrips();
@@ -26,9 +30,39 @@ const MyTrips = () => {
     toast.success("Trip deleted");
   };
 
-  const aiTrips = trips.filter(t => t.source === 'ai');
-  const customTrips = trips.filter(t => t.source === 'custom');
-  const hasAnyTrips = trips.length > 0;
+  const toggleFavorite = (trip: SavedTrip) => {
+    const updated = { ...trip, isFavorite: !trip.isFavorite };
+    saveTrip(updated);
+    loadAllTrips();
+    toast.success(updated.isFavorite ? "Added to favorites" : "Removed from favorites");
+  };
+
+  // Helper: Check if trip is in the past
+  const isTripPast = (trip: SavedTrip): boolean => {
+    if (!trip.days.length) return false;
+    const lastDate = trip.days[trip.days.length - 1]?.date;
+    if (!lastDate) return false;
+
+    try {
+      const tripDate = new Date(lastDate);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      return tripDate < today;
+    } catch {
+      return false;
+    }
+  };
+
+  // Filter trips by tab
+  const pastTrips = trips.filter(t => isTripPast(t));
+  const futureTrips = trips.filter(t => !isTripPast(t));
+  const favoriteTrips = trips.filter(t => t.isFavorite);
+
+  const displayedTrips =
+    activeTab === 'past' ? pastTrips :
+    activeTab === 'future' ? futureTrips :
+    activeTab === 'favorites' ? favoriteTrips :
+    trips;
 
   const calculateTripCost = (trip: SavedTrip) => {
     return trip.days.reduce((t, d) =>
@@ -39,21 +73,61 @@ const MyTrips = () => {
   const TripCard = ({ trip }: { trip: SavedTrip }) => {
     const totalCost = calculateTripCost(trip);
     const isAI = trip.source === 'ai';
+    const isPast = isTripPast(trip);
 
     return (
-      <div className="bg-card rounded-xl shadow-sm border border-border/50 p-5 hover:shadow-md transition-shadow">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="space-y-2 flex-1">
-            <h3 className="text-xl font-bold text-foreground flex items-center gap-2">
-              <MapPin className="w-5 h-5 text-primary" />
-              {trip.title}
-              {isAI && trip.aiMetadata && (
-                <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium">
-                  {trip.aiMetadata.comfortLevelEmoji} AI Generated
-                </span>
-              )}
-            </h3>
+      <div className="bg-card rounded-xl shadow-sm border border-border/50 p-5 hover:shadow-md transition-all relative overflow-hidden">
+        {/* Past trip overlay */}
+        {isPast && (
+          <div className="absolute top-3 right-3">
+            <span className="inline-flex items-center gap-1 bg-muted/80 text-muted-foreground px-2 py-1 rounded-full text-xs font-medium">
+              <Archive className="w-3 h-3" />
+              Past Trip
+            </span>
+          </div>
+        )}
 
+        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+          <div className="space-y-3 flex-1">
+            {/* Title */}
+            <div className="flex items-start gap-2">
+              <h3 className="text-xl font-bold text-foreground flex items-center gap-2 flex-wrap">
+                <MapPin className="w-5 h-5 text-primary shrink-0" />
+                {trip.title}
+                {isAI && trip.aiMetadata && (
+                  <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium">
+                    {trip.aiMetadata.comfortLevelEmoji} AI
+                  </span>
+                )}
+              </h3>
+            </div>
+
+            {/* Rating */}
+            {trip.rating && (
+              <div className="flex items-center gap-1">
+                {[...Array(5)].map((_, i) => (
+                  <Star
+                    key={i}
+                    className={cn(
+                      "w-4 h-4",
+                      i < trip.rating! ? "fill-yellow-400 text-yellow-400" : "text-gray-300"
+                    )}
+                  />
+                ))}
+                <span className="text-sm text-muted-foreground ml-1">
+                  {trip.rating}/5
+                </span>
+              </div>
+            )}
+
+            {/* Review */}
+            {trip.review && (
+              <p className="text-sm text-muted-foreground italic line-clamp-2">
+                "{trip.review}"
+              </p>
+            )}
+
+            {/* Details */}
             <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
               {trip.destination && (
                 <span className="flex items-center gap-1">
@@ -69,20 +143,44 @@ const MyTrips = () => {
                 <Users className="w-4 h-4" />
                 {trip.travelers} traveler{trip.travelers !== 1 ? 's' : ''}
               </span>
-              {isAI && trip.aiMetadata?.originalDates && (
-                <span className="text-xs">
-                  {trip.aiMetadata.originalDates}
+              {trip.days[0]?.date && (
+                <span className="flex items-center gap-1">
+                  <Clock className="w-4 h-4" />
+                  {trip.days[0].date}
                 </span>
               )}
             </div>
+
+            {/* Tags */}
+            {trip.tags && trip.tags.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {trip.tags.map((tag, i) => (
+                  <span key={i} className="text-xs bg-accent text-accent-foreground px-2 py-1 rounded-full">
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
 
-          <div className="flex items-center gap-3">
+          {/* Actions */}
+          <div className="flex items-center gap-2">
             {totalCost > 0 && (
               <span className="text-lg font-bold text-primary">
                 €{totalCost.toLocaleString()}
               </span>
             )}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => toggleFavorite(trip)}
+              className={cn(
+                "hover:bg-accent",
+                trip.isFavorite && "text-red-500 hover:text-red-600"
+              )}
+            >
+              <Heart className={cn("w-4 h-4", trip.isFavorite && "fill-current")} />
+            </Button>
             <Button variant="outline" size="sm" asChild>
               <Link to={`/builder/${trip.id}`}>
                 <Pencil className="w-4 h-4 mr-1" /> Edit
@@ -102,6 +200,13 @@ const MyTrips = () => {
     );
   };
 
+  const tabs: { id: TabType; label: string; count: number; icon: typeof Briefcase }[] = [
+    { id: 'all', label: 'All Trips', count: trips.length, icon: Briefcase },
+    { id: 'future', label: 'Bucket List', count: futureTrips.length, icon: Clock },
+    { id: 'past', label: 'Past Trips', count: pastTrips.length, icon: Archive },
+    { id: 'favorites', label: 'Favorites', count: favoriteTrips.length, icon: Heart },
+  ];
+
   return (
     <div className="min-h-screen flex flex-col">
       <Header />
@@ -109,19 +214,19 @@ const MyTrips = () => {
       <main className="flex-1 pt-16">
         <section className="py-12 md:py-20 bg-gradient-to-br from-accent via-background to-muted">
           <div className="container mx-auto px-4">
-            <div className="max-w-4xl mx-auto">
+            <div className="max-w-5xl mx-auto">
               {/* Header */}
               <div className="text-center mb-10">
                 <div className="inline-flex items-center gap-2 bg-primary/10 text-primary px-4 py-2 rounded-full mb-6">
                   <Briefcase className="w-4 h-4" />
-                  <span className="text-sm font-medium">Your Adventures</span>
+                  <span className="text-sm font-medium">Your Travel Diary</span>
                 </div>
 
                 <h1 className="text-3xl md:text-5xl font-bold text-foreground mb-4">
                   My Trips
                 </h1>
                 <p className="text-lg text-muted-foreground mb-6">
-                  View and manage your saved trip itineraries
+                  {pastTrips.length} past adventures • {futureTrips.length} upcoming trips
                 </p>
 
                 <div className="flex flex-col sm:flex-row gap-3 justify-center">
@@ -140,48 +245,68 @@ const MyTrips = () => {
                 </div>
               </div>
 
-              {/* Trips List */}
-              {hasAnyTrips ? (
-                <div className="space-y-6">
-                  {/* AI Trips */}
-                  {aiTrips.length > 0 && (
-                    <div className="space-y-3">
-                      <h3 className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
-                        <Sparkles className="w-4 h-4" /> AI Generated Trips
-                      </h3>
-                      {aiTrips.map(trip => <TripCard key={trip.id} trip={trip} />)}
-                    </div>
-                  )}
+              {/* Tabs */}
+              <div className="flex flex-wrap gap-2 mb-6 justify-center">
+                {tabs.map(tab => {
+                  const Icon = tab.icon;
+                  return (
+                    <button
+                      key={tab.id}
+                      onClick={() => setActiveTab(tab.id)}
+                      className={cn(
+                        "flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all",
+                        activeTab === tab.id
+                          ? "bg-primary text-primary-foreground shadow-md"
+                          : "bg-card hover:bg-accent text-foreground"
+                      )}
+                    >
+                      <Icon className="w-4 h-4" />
+                      {tab.label}
+                      <span className={cn(
+                        "text-xs px-2 py-0.5 rounded-full",
+                        activeTab === tab.id
+                          ? "bg-primary-foreground/20"
+                          : "bg-muted"
+                      )}>
+                        {tab.count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
 
-                  {/* Custom Trips */}
-                  {customTrips.length > 0 && (
-                    <div className="space-y-3">
-                      <h3 className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
-                        <Pencil className="w-4 h-4" /> Custom Trips
-                      </h3>
-                      {customTrips.map(trip => <TripCard key={trip.id} trip={trip} />)}
-                    </div>
-                  )}
+              {/* Trips List */}
+              {displayedTrips.length > 0 ? (
+                <div className="space-y-4">
+                  {displayedTrips.map(trip => <TripCard key={trip.id} trip={trip} />)}
                 </div>
               ) : (
                 <div className="bg-card rounded-2xl shadow-sm border border-border/50 p-12 text-center">
                   <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-6">
                     <Briefcase className="w-8 h-8 text-muted-foreground" />
                   </div>
-                  <h3 className="text-xl font-bold text-foreground mb-2">No saved trips yet</h3>
-                  <p className="text-muted-foreground mb-6">Start planning your first adventure</p>
-                  <div className="flex flex-col sm:flex-row gap-3 justify-center">
-                    <Button asChild size="lg">
-                      <Link to="/">
-                        <Sparkles className="w-5 h-5 mr-2" /> AI-Generated Trip
-                      </Link>
-                    </Button>
-                    <Button asChild size="lg" variant="outline">
-                      <Link to="/builder">
-                        <Plus className="w-5 h-5 mr-2" /> Create Custom Trip
-                      </Link>
-                    </Button>
-                  </div>
+                  <h3 className="text-xl font-bold text-foreground mb-2">
+                    No {activeTab === 'all' ? '' : activeTab} trips yet
+                  </h3>
+                  <p className="text-muted-foreground mb-6">
+                    {activeTab === 'favorites'
+                      ? 'Mark trips as favorite by clicking the heart icon'
+                      : 'Start planning your first adventure'}
+                  </p>
+                  {activeTab !== 'favorites' && (
+                    <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                      <Button asChild size="lg">
+                        <Link to="/">
+                          <Sparkles className="w-5 h-5 mr-2" /> AI-Generated Trip
+                        </Link>
+                      </Button>
+                      <Button asChild size="lg" variant="outline">
+                        <Link to="/builder">
+                          <Plus className="w-5 h-5 mr-2" /> Create Custom Trip
+                        </Link>
+                      </Button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

@@ -19,6 +19,13 @@ export interface SavedTrip {
   // Days structure (uses BuilderDay from TripBuilder)
   days: BuilderDay[];
 
+  // Trip Diary features
+  isFavorite?: boolean;
+  rating?: number;              // 1-5 stars
+  review?: string;              // User's trip review/notes
+  photos?: string[];            // Array of photo URLs
+  tags?: string[];              // Custom tags for organization
+
   // AI-specific metadata (optional, preserved when source='ai')
   aiMetadata?: {
     comfortLevel: number;
