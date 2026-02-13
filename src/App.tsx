@@ -9,6 +9,8 @@ import Planner from "./pages/Planner";
 import Itinerary from "./pages/Itinerary";
 import MyTrips from "./pages/MyTrips";
 import TripBuilder from "./pages/TripBuilder";
+import Explore from "./pages/Explore";
+import TripView from "./pages/TripView";
 import About from "./pages/About";
 import NotFound from "./pages/NotFound";
 
@@ -25,6 +27,8 @@ const App = () => (
             <Routes>
               <Route path="/" element={<Planner />} />
               <Route path="/my-trips" element={<MyTrips />} />
+              <Route path="/explore" element={<Explore />} />
+              <Route path="/trip/:id" element={<TripView />} />
               <Route path="/itinerary" element={<Itinerary />} />
               <Route path="/builder" element={<TripBuilder />} />
               <Route path="/builder/:id" element={<TripBuilder />} />

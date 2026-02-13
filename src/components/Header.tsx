@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Menu, X, Compass, Briefcase } from "lucide-react";
+import { Menu, X, Compass, Briefcase, Globe } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import ThemeToggle from "./ThemeToggle";
 
@@ -11,6 +11,7 @@ const Header = () => {
   const navLinks = [
     { href: "/", label: "Plan Trip" },
     { href: "/my-trips", label: "My Trips" },
+    { href: "/explore", label: "Explore" },
     { href: "/about", label: "About" },
   ];
 
@@ -39,6 +40,7 @@ const Header = () => {
                 className={`${isActive(link.href) ? "nav-link-active" : "nav-link"} flex items-center gap-2`}
               >
                 {link.label === "My Trips" && <Briefcase className="w-4 h-4" />}
+                {link.label === "Explore" && <Globe className="w-4 h-4" />}
                 {link.label}
               </Link>
             ))}
@@ -77,6 +79,7 @@ const Header = () => {
                   onClick={() => setIsMenuOpen(false)}
                 >
                   {link.label === "My Trips" && <Briefcase className="w-4 h-4" />}
+                  {link.label === "Explore" && <Globe className="w-4 h-4" />}
                   {link.label}
                 </Link>
               ))}

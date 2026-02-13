@@ -232,7 +232,12 @@ const DateRangePicker = ({
                 )}
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-[calc(100vw-2rem)] sm:w-auto min-w-[280px] max-w-[320px] p-0 bg-card border-2 shadow-xl rounded-xl overflow-hidden" align="start">
+            <PopoverContent
+              className="w-[calc(100vw-2rem)] sm:w-auto min-w-[280px] max-w-[320px] p-0 bg-card border-2 shadow-xl rounded-xl overflow-hidden z-[100]"
+              align="center"
+              sideOffset={8}
+              collisionPadding={16}
+            >
               <div className="p-3 border-b border-border bg-muted/30">
                 <h3 className="font-semibold text-foreground">When do you leave?</h3>
                 <p className="text-xs text-muted-foreground">Select your departure date</p>
@@ -319,11 +324,16 @@ const DateRangePicker = ({
                 )}
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-[calc(100vw-2rem)] sm:w-auto min-w-[280px] max-w-[320px] p-0 bg-card border-2 shadow-xl rounded-xl overflow-hidden" align="start">
+            <PopoverContent
+              className="w-[calc(100vw-2rem)] sm:w-auto min-w-[280px] max-w-[320px] p-0 bg-card border-2 shadow-xl rounded-xl overflow-hidden z-[100]"
+              align="center"
+              sideOffset={8}
+              collisionPadding={16}
+            >
               <div className="p-3 border-b border-border bg-muted/30">
                 <h3 className="font-semibold text-foreground">When do you return?</h3>
                 <p className="text-xs text-muted-foreground">
-                  {startDate 
+                  {startDate
                     ? `Must be after ${format(startDate, "MMM d, yyyy")}`
                     : "Select start date first"}
                 </p>

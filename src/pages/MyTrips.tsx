@@ -1,19 +1,22 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
-import { MapPin, Calendar, Users, Trash2, Pencil, Sparkles, Plus, Briefcase, Star, Heart, Clock, Archive } from "lucide-react";
+import { MapPin, Calendar, Users, Trash2, Pencil, Sparkles, Plus, Briefcase, Star, Heart, Clock, Archive, Map } from "lucide-react";
 import { loadTrips, deleteTrip, saveTrip } from "@/services/storageService";
 import { SavedTrip } from "@/lib/tripTypes";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+// import TripMap from "@/components/TripMap"; // Temporarily disabled until leaflet packages are installed
 
 type TabType = 'all' | 'future' | 'past' | 'favorites';
 
 const MyTrips = () => {
+  const navigate = useNavigate();
   const [trips, setTrips] = useState<SavedTrip[]>([]);
   const [activeTab, setActiveTab] = useState<TabType>('all');
+  const [showMap, setShowMap] = useState(true);
 
   const loadAllTrips = () => {
     const allTrips = loadTrips();
@@ -76,7 +79,10 @@ const MyTrips = () => {
     const isPast = isTripPast(trip);
 
     return (
-      <div className="bg-card rounded-xl shadow-sm border border-border/50 p-5 hover:shadow-md transition-all relative overflow-hidden">
+      <div
+        className="bg-card rounded-xl shadow-sm border border-border/50 p-5 hover:shadow-md transition-all relative overflow-hidden cursor-pointer"
+        onClick={() => navigate(`/trip/${trip.id}`)}
+      >
         {/* Past trip overlay */}
         {isPast && (
           <div className="absolute top-3 right-3">
@@ -164,7 +170,7 @@ const MyTrips = () => {
           </div>
 
           {/* Actions */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
             {totalCost > 0 && (
               <span className="text-lg font-bold text-primary">
                 €{totalCost.toLocaleString()}
@@ -173,7 +179,10 @@ const MyTrips = () => {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => toggleFavorite(trip)}
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleFavorite(trip);
+              }}
               className={cn(
                 "hover:bg-accent",
                 trip.isFavorite && "text-red-500 hover:text-red-600"
@@ -181,15 +190,23 @@ const MyTrips = () => {
             >
               <Heart className={cn("w-4 h-4", trip.isFavorite && "fill-current")} />
             </Button>
-            <Button variant="outline" size="sm" asChild>
-              <Link to={`/builder/${trip.id}`}>
-                <Pencil className="w-4 h-4 mr-1" /> Edit
-              </Link>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                navigate(`/builder/${trip.id}`);
+              }}
+            >
+              <Pencil className="w-4 h-4 mr-1" /> Edit
             </Button>
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => handleDelete(trip.id)}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDelete(trip.id);
+              }}
               className="text-destructive hover:text-destructive hover:bg-destructive/10"
             >
               <Trash2 className="w-4 h-4" />
@@ -212,20 +229,15 @@ const MyTrips = () => {
       <Header />
 
       <main className="flex-1 pt-16">
-        <section className="py-12 md:py-20 bg-gradient-to-br from-accent via-background to-muted">
+        <section className="py-6 md:py-10 bg-gradient-to-br from-accent via-background to-muted">
           <div className="container mx-auto px-4">
             <div className="max-w-5xl mx-auto">
               {/* Header */}
-              <div className="text-center mb-10">
-                <div className="inline-flex items-center gap-2 bg-primary/10 text-primary px-4 py-2 rounded-full mb-6">
-                  <Briefcase className="w-4 h-4" />
-                  <span className="text-sm font-medium">Your Travel Diary</span>
-                </div>
-
-                <h1 className="text-3xl md:text-5xl font-bold text-foreground mb-4">
+              <div className="text-center mb-6">
+                <h1 className="text-3xl md:text-5xl font-bold text-foreground mb-3">
                   My Trips
                 </h1>
-                <p className="text-lg text-muted-foreground mb-6">
+                <p className="text-lg text-muted-foreground mb-4">
                   {pastTrips.length} past adventures • {futureTrips.length} upcoming trips
                 </p>
 
@@ -245,35 +257,56 @@ const MyTrips = () => {
                 </div>
               </div>
 
-              {/* Tabs */}
-              <div className="flex flex-wrap gap-2 mb-6 justify-center">
-                {tabs.map(tab => {
-                  const Icon = tab.icon;
-                  return (
-                    <button
-                      key={tab.id}
-                      onClick={() => setActiveTab(tab.id)}
-                      className={cn(
-                        "flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all",
-                        activeTab === tab.id
-                          ? "bg-primary text-primary-foreground shadow-md"
-                          : "bg-card hover:bg-accent text-foreground"
-                      )}
-                    >
-                      <Icon className="w-4 h-4" />
-                      {tab.label}
-                      <span className={cn(
-                        "text-xs px-2 py-0.5 rounded-full",
-                        activeTab === tab.id
-                          ? "bg-primary-foreground/20"
-                          : "bg-muted"
-                      )}>
-                        {tab.count}
-                      </span>
-                    </button>
-                  );
-                })}
+              {/* Tabs and Map Toggle */}
+              <div className="flex flex-col sm:flex-row gap-4 mb-6 justify-between items-center">
+                <div className="flex flex-wrap gap-2 justify-center">
+                  {tabs.map(tab => {
+                    const Icon = tab.icon;
+                    return (
+                      <button
+                        key={tab.id}
+                        onClick={() => setActiveTab(tab.id)}
+                        className={cn(
+                          "flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all",
+                          activeTab === tab.id
+                            ? "bg-primary text-primary-foreground shadow-md"
+                            : "bg-card hover:bg-accent text-foreground"
+                        )}
+                      >
+                        <Icon className="w-4 h-4" />
+                        {tab.label}
+                        <span className={cn(
+                          "text-xs px-2 py-0.5 rounded-full",
+                          activeTab === tab.id
+                            ? "bg-primary-foreground/20"
+                            : "bg-muted"
+                        )}>
+                          {tab.count}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {trips.length > 0 && (
+                  <Button
+                    variant={showMap ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setShowMap(!showMap)}
+                    className="gap-2"
+                  >
+                    <Map className="w-4 h-4" />
+                    {showMap ? "Hide" : "Show"} Map
+                  </Button>
+                )}
               </div>
+
+              {/* Trip Map - Temporarily disabled until leaflet packages are installed */}
+              {/* {showMap && trips.length > 0 && (
+                <div className="mb-8">
+                  <TripMap trips={displayedTrips} />
+                </div>
+              )} */}
 
               {/* Trips List */}
               {displayedTrips.length > 0 ? (
