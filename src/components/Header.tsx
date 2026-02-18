@@ -1,12 +1,16 @@
 import { useState } from "react";
-import { Link, useLocation } from "react-router-dom";
-import { Menu, X, Compass, Briefcase, Globe } from "lucide-react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Menu, X, Compass, Briefcase, Globe, LogOut, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import ThemeToggle from "./ThemeToggle";
+import { useAuth } from "@/context/AuthContext";
+import { toast } from "sonner";
 
 const Header = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
+  const { user, signOut, loading } = useAuth();
 
   const navLinks = [
     { href: "/", label: "Plan Trip" },
@@ -16,6 +20,13 @@ const Header = () => {
   ];
 
   const isActive = (path: string) => location.pathname === path;
+
+  const handleSignOut = async () => {
+    await signOut();
+    toast.success("Signed out");
+    navigate("/");
+    setIsMenuOpen(false);
+  };
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-lg border-b border-border/50">
@@ -46,12 +57,34 @@ const Header = () => {
             ))}
           </nav>
 
-          {/* Right side - Theme Toggle & CTA Button */}
+          {/* Right side */}
           <div className="hidden md:flex items-center gap-3">
             <ThemeToggle />
-            <Button asChild variant="default" size="sm">
-              <Link to="/">Start Planning</Link>
-            </Button>
+            {!loading && (
+              user ? (
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5 text-sm text-muted-foreground px-3 py-1.5 rounded-lg bg-muted">
+                    <User className="w-4 h-4" />
+                    <span className="max-w-[120px] truncate">
+                      {user.user_metadata?.display_name || user.email}
+                    </span>
+                  </div>
+                  <Button variant="ghost" size="sm" onClick={handleSignOut} className="gap-1.5">
+                    <LogOut className="w-4 h-4" />
+                    Sign Out
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <Button asChild variant="ghost" size="sm">
+                    <Link to="/login">Sign In</Link>
+                  </Button>
+                  <Button asChild variant="default" size="sm">
+                    <Link to="/signup">Sign Up</Link>
+                  </Button>
+                </div>
+              )
+            )}
           </div>
 
           {/* Mobile - Theme Toggle & Menu Button */}
@@ -83,11 +116,28 @@ const Header = () => {
                   {link.label}
                 </Link>
               ))}
-              <Button asChild variant="default" className="w-full mt-2">
-                <Link to="/" onClick={() => setIsMenuOpen(false)}>
-                  Start Planning
-                </Link>
-              </Button>
+              {!loading && (
+                user ? (
+                  <>
+                    <div className="flex items-center gap-1.5 text-sm text-muted-foreground px-2 py-1">
+                      <User className="w-4 h-4" />
+                      <span className="truncate">{user.user_metadata?.display_name || user.email}</span>
+                    </div>
+                    <Button variant="ghost" className="w-full justify-start gap-2 text-destructive" onClick={handleSignOut}>
+                      <LogOut className="w-4 h-4" /> Sign Out
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Button asChild variant="ghost" className="w-full">
+                      <Link to="/login" onClick={() => setIsMenuOpen(false)}>Sign In</Link>
+                    </Button>
+                    <Button asChild variant="default" className="w-full">
+                      <Link to="/signup" onClick={() => setIsMenuOpen(false)}>Sign Up</Link>
+                    </Button>
+                  </>
+                )
+              )}
             </div>
           </nav>
         )}

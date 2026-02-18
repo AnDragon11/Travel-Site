@@ -317,7 +317,7 @@ const Explore = () => {
 
   // Load saved trips on mount
   useEffect(() => {
-    setSavedTrips(loadTrips());
+    loadTrips().then(setSavedTrips);
   }, []);
 
   // Check if a trip is favorited (either in placeholder or saved trips)
@@ -327,20 +327,20 @@ const Explore = () => {
   };
 
   // Toggle favorite for a trip
-  const toggleFavorite = (trip: SavedTrip) => {
+  const toggleFavorite = async (trip: SavedTrip) => {
     const existingTrip = savedTrips.find(t => t.id === trip.id);
 
     if (existingTrip) {
       // Trip already saved, just toggle favorite
       const updated = { ...existingTrip, isFavorite: !existingTrip.isFavorite };
-      saveTrip(updated);
-      setSavedTrips(loadTrips());
+      await saveTrip(updated);
+      setSavedTrips(await loadTrips());
       toast.success(updated.isFavorite ? "Added to favorites" : "Removed from favorites");
     } else {
       // New trip, save it with favorite = true
       const newTrip = { ...trip, isFavorite: true };
-      saveTrip(newTrip);
-      setSavedTrips(loadTrips());
+      await saveTrip(newTrip);
+      setSavedTrips(await loadTrips());
       toast.success("Trip saved and added to favorites!");
     }
   };
