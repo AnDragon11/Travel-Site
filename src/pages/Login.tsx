@@ -38,7 +38,7 @@ const Login = () => {
           <div className="feature-card">
             <div className="text-center mb-8">
               <h1 className="text-3xl font-bold text-foreground mb-2">
-                Welcome back to <span className="text-gradient-primary">Wanderly</span>
+                Welcome back to <span className="text-gradient-primary">DiaryTrips</span>
               </h1>
               <p className="text-muted-foreground">Sign in to access your trips</p>
             </div>

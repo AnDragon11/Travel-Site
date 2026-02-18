@@ -42,7 +42,7 @@ const About = () => {
           <div className="container mx-auto px-4">
             <div className="max-w-3xl mx-auto text-center">
               <h1 className="text-4xl md:text-5xl font-bold text-foreground mb-6">
-                About <span className="text-gradient-primary">Wanderly</span>
+                About <span className="text-gradient-primary">DiaryTrips</span>
               </h1>
               <p className="text-lg text-muted-foreground leading-relaxed">
                 We're on a mission to make travel planning effortless and exciting. Our AI-powered platform 
