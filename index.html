@@ -5,6 +5,16 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>DiaryTrips</title>
+    <script>
+      // Restore path encoded by 404.html (GitHub Pages SPA fix)
+      (function() {
+        var p = new URLSearchParams(window.location.search).get('p');
+        var h = new URLSearchParams(window.location.search).get('h');
+        if (p) {
+          window.history.replaceState(null, '', decodeURIComponent(p) + (h ? decodeURIComponent(h) : ''));
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
