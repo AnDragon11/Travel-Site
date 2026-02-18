@@ -1,73 +1,55 @@
-# Welcome to your Lovable project
+# AI Travel Agency
 
-## Project info
+An AI-powered travel planning platform and social media site where users can create, share, and discover trip itineraries. Sometimes described as *"the Instagram of travel."*
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+## What It Does
 
-## How can I edit this code?
+- **AI Trip Planning** — Enter your destination, budget, and preferences; the AI generates a full itinerary covering flights, accommodation, activities, food, visas, weather, and more.
+- **Trip Diary** — Log past trips with reviews, photos, and notes. Stored locally for guests, synced to the cloud for signed-in users.
+- **Bucket List** — Save future trips and planned itineraries. Collaborate with others on group trips.
+- **Explore Page** — Browse public trips from other travelers, copy itineraries, and get inspired. Popular itinerary creators earn discounts on future bookings.
 
-There are several ways of editing your application.
+## Tech Stack
 
-**Use Lovable**
+- **Frontend** — React 18, TypeScript, Vite, Tailwind CSS, shadcn/ui
+- **Auth & Database** — Supabase
+- **Maps** — Leaflet / React Leaflet
+- **Backend** — n8n workflow (handles AI orchestration, flight/hotel/activity APIs)
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
-
-Changes made via Lovable will be committed automatically to this repo.
-
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
+## Getting Started
 
 ```sh
-# Step 1: Clone the repository using the project's Git URL.
+# Clone the repo
 git clone <YOUR_GIT_URL>
+cd Travel-Site
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+# Install dependencies
+npm install
 
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
+# Start the dev server
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+### Other Commands
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+```sh
+npm run build      # Production build
+npm run lint       # Run ESLint
+npm run test       # Run tests (Vitest)
+```
 
-**Use GitHub Codespaces**
+## How the AI Works
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+When a user submits trip details, the frontend sends a request to an n8n backend workflow which queries multiple APIs to evaluate:
 
-## What technologies are used for this project?
+- **Flights** — Finds options within budget, including potential layover destinations worth exploring
+- **Accommodation** — Compares hotels by price, location, and inclusions (breakfast, all-inclusive, etc.)
+- **Activities** — Suggests popular and underrated things to do based on user preferences and energy levels
+- **Logistics** — Checks visa requirements, weather forecasts, and travel distances between locations
+- **Overall Fit** — Evaluates whether the full itinerary makes sense within the budget and timeframe
 
-This project is built with:
+Results are returned as structured JSON itineraries that users can view, edit, and rearrange.
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+## Privacy
 
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+Trip visibility defaults to **friends only** (mutual followers). Users can change any trip to public or private at any time, including past diary entries and future bucket list plans.
