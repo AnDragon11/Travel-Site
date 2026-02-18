@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Menu, X, Compass, Briefcase, Globe, LogOut, User } from "lucide-react";
+import { Menu, X, Compass, Briefcase, Globe, LogOut, Sun, Moon, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import ThemeToggle from "./ThemeToggle";
 import { useAuth } from "@/context/AuthContext";
+import { useTheme } from "next-themes";
+import UserMenu from "./UserMenu";
 import { toast } from "sonner";
 
 const Header = () => {
@@ -11,6 +12,7 @@ const Header = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, signOut, loading } = useAuth();
+  const { theme, setTheme } = useTheme();
 
   const navLinks = [
     { href: "/", label: "Plan Trip" },
@@ -22,10 +24,10 @@ const Header = () => {
   const isActive = (path: string) => location.pathname === path;
 
   const handleSignOut = async () => {
+    setIsMenuOpen(false);
     await signOut();
     toast.success("Signed out");
     navigate("/");
-    setIsMenuOpen(false);
   };
 
   return (
@@ -37,9 +39,7 @@ const Header = () => {
             <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center group-hover:shadow-glow transition-shadow duration-300">
               <Compass className="w-5 h-5 text-primary-foreground" />
             </div>
-            <span className="text-xl font-bold text-foreground">
-              Wanderly
-            </span>
+            <span className="text-xl font-bold text-foreground">Wanderly</span>
           </Link>
 
           {/* Desktop Navigation */}
@@ -58,38 +58,47 @@ const Header = () => {
           </nav>
 
           {/* Right side */}
-          <div className="hidden md:flex items-center gap-3">
-            <ThemeToggle />
+          <div className="hidden md:flex items-center gap-2">
             {!loading && (
               user ? (
-                <div className="flex items-center gap-2">
-                  <div className="flex items-center gap-1.5 text-sm text-muted-foreground px-3 py-1.5 rounded-lg bg-muted">
-                    <User className="w-4 h-4" />
-                    <span className="max-w-[120px] truncate">
-                      {user.user_metadata?.display_name || user.email}
-                    </span>
-                  </div>
-                  <Button variant="ghost" size="sm" onClick={handleSignOut} className="gap-1.5">
-                    <LogOut className="w-4 h-4" />
-                    Sign Out
-                  </Button>
-                </div>
+                <UserMenu />
               ) : (
-                <div className="flex items-center gap-2">
+                <>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+                    className="relative rounded-full h-9 w-9"
+                    aria-label="Toggle theme"
+                  >
+                    <Sun className="h-4 w-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+                    <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+                  </Button>
                   <Button asChild variant="ghost" size="sm">
                     <Link to="/login">Sign In</Link>
                   </Button>
                   <Button asChild variant="default" size="sm">
                     <Link to="/signup">Sign Up</Link>
                   </Button>
-                </div>
+                </>
               )
             )}
           </div>
 
-          {/* Mobile - Theme Toggle & Menu Button */}
+          {/* Mobile controls */}
           <div className="md:hidden flex items-center gap-2">
-            <ThemeToggle />
+            {!loading && !user && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+                className="relative rounded-full h-9 w-9"
+                aria-label="Toggle theme"
+              >
+                <Sun className="h-4 w-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+                <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+              </Button>
+            )}
             <button
               className="p-2 text-foreground"
               onClick={() => setIsMenuOpen(!isMenuOpen)}
@@ -103,12 +112,12 @@ const Header = () => {
         {/* Mobile Navigation */}
         {isMenuOpen && (
           <nav className="md:hidden py-4 border-t border-border/50 animate-fade-in">
-            <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1">
               {navLinks.map((link) => (
                 <Link
                   key={link.href}
                   to={link.href}
-                  className={`px-2 py-2 flex items-center gap-2 ${isActive(link.href) ? "nav-link-active" : "nav-link"}`}
+                  className={`px-3 py-2.5 rounded-lg flex items-center gap-2 ${isActive(link.href) ? "nav-link-active bg-accent" : "nav-link"}`}
                   onClick={() => setIsMenuOpen(false)}
                 >
                   {link.label === "My Trips" && <Briefcase className="w-4 h-4" />}
@@ -116,26 +125,50 @@ const Header = () => {
                   {link.label}
                 </Link>
               ))}
+
               {!loading && (
                 user ? (
-                  <>
-                    <div className="flex items-center gap-1.5 text-sm text-muted-foreground px-2 py-1">
-                      <User className="w-4 h-4" />
-                      <span className="truncate">{user.user_metadata?.display_name || user.email}</span>
+                  <div className="mt-2 pt-2 border-t border-border/50 space-y-1">
+                    <div className="flex items-center gap-2 px-3 py-2">
+                      <div className="w-7 h-7 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold">
+                        {(user.user_metadata?.display_name || user.email || "").slice(0, 2).toUpperCase()}
+                      </div>
+                      <span className="text-sm font-medium text-foreground truncate">
+                        {user.user_metadata?.display_name || user.email}
+                      </span>
                     </div>
-                    <Button variant="ghost" className="w-full justify-start gap-2 text-destructive" onClick={handleSignOut}>
+                    <Link
+                      to="/profile"
+                      onClick={() => setIsMenuOpen(false)}
+                      className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm nav-link"
+                    >
+                      <User className="w-4 h-4" /> Profile Settings
+                    </Link>
+                    <button
+                      onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+                      className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm nav-link text-left"
+                    >
+                      {theme === "dark"
+                        ? <><Sun className="w-4 h-4" /> Light Mode</>
+                        : <><Moon className="w-4 h-4" /> Dark Mode</>
+                      }
+                    </button>
+                    <button
+                      onClick={handleSignOut}
+                      className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm text-destructive hover:bg-destructive/10 transition-colors text-left"
+                    >
                       <LogOut className="w-4 h-4" /> Sign Out
-                    </Button>
-                  </>
+                    </button>
+                  </div>
                 ) : (
-                  <>
+                  <div className="mt-2 pt-2 border-t border-border/50 space-y-2">
                     <Button asChild variant="ghost" className="w-full">
                       <Link to="/login" onClick={() => setIsMenuOpen(false)}>Sign In</Link>
                     </Button>
                     <Button asChild variant="default" className="w-full">
                       <Link to="/signup" onClick={() => setIsMenuOpen(false)}>Sign Up</Link>
                     </Button>
-                  </>
+                  </div>
                 )
               )}
             </div>

@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { TripProvider } from "@/context/TripContext";
 import { AuthProvider } from "@/context/AuthContext";
+import { PreferencesProvider } from "@/context/PreferencesContext";
 import { ThemeProvider } from "next-themes";
 import Planner from "./pages/Planner";
 import Itinerary from "./pages/Itinerary";
@@ -15,6 +16,7 @@ import TripView from "./pages/TripView";
 import About from "./pages/About";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
+import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -23,6 +25,7 @@ const App = () => (
   <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
+        <PreferencesProvider>
         <TripProvider>
           <TooltipProvider>
             <Toaster />
@@ -34,6 +37,7 @@ const App = () => (
                 <Route path="/about" element={<About />} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/signup" element={<Signup />} />
+                <Route path="/profile" element={<Profile />} />
                 <Route path="/itinerary" element={<Itinerary />} />
                 <Route path="/my-trips" element={<MyTrips />} />
                 <Route path="/trip/:id" element={<TripView />} />
@@ -45,6 +49,7 @@ const App = () => (
             </BrowserRouter>
           </TooltipProvider>
         </TripProvider>
+        </PreferencesProvider>
       </AuthProvider>
     </QueryClientProvider>
   </ThemeProvider>
