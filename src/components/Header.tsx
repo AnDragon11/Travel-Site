@@ -36,10 +36,10 @@ const Header = () => {
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
           <Link to="/" className="flex items-center gap-2 group">
-            <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center group-hover:shadow-glow transition-shadow duration-300">
-              <Compass className="w-5 h-5 text-primary-foreground" />
+            <div className="w-10 h-10 rounded-xl bg-gradient-primary flex items-center justify-center group-hover:shadow-glow transition-shadow duration-300">
+              <Compass className="w-5 h-5 text-white" />
             </div>
-            <span className="text-xl font-bold text-foreground">Wanderly</span>
+            <span className="text-xl font-bold text-gradient-primary">DiaryTrips</span>
           </Link>
 
           {/* Desktop Navigation */}

@@ -24,7 +24,7 @@ interface PreferencesContextType extends Preferences {
   currencySymbol: string;
 }
 
-const STORAGE_KEY = "wanderly_prefs";
+const STORAGE_KEY = "diarytrips_prefs";
 
 const defaults: Preferences = { dateFormat: "DD/MM/YYYY", currency: "EUR" };
 

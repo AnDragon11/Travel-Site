@@ -3,9 +3,9 @@ import { supabase } from "@/integrations/supabase/client";
 import type { Json } from "@/integrations/supabase/types";
 
 // ─── localStorage constants (guest storage) ────────────────────────
-const LOCAL_KEY = 'wanderly_trips';
-const LEGACY_BUILDER_KEY = 'wanderly_builder_trips';
-const LEGACY_SAVED_KEY = 'wanderly_saved_trips';
+const LOCAL_KEY = 'diarytrips_trips';
+const LEGACY_BUILDER_KEY = 'diarytrips_builder_trips';
+const LEGACY_SAVED_KEY = 'diarytrips_saved_trips';
 
 // ─── helpers ────────────────────────────────────────────────────────
 

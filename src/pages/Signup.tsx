@@ -83,7 +83,7 @@ const Signup = () => {
           <div className="feature-card">
             <div className="text-center mb-8">
               <h1 className="text-3xl font-bold text-foreground mb-2">
-                Join <span className="text-gradient-primary">Wanderly</span>
+                Join <span className="text-gradient-primary">DiaryTrips</span>
               </h1>
               <p className="text-muted-foreground">Create your account and start planning</p>
             </div>
