@@ -323,21 +323,23 @@ const TripView = () => {
   useEffect(() => {
     if (!id) return;
 
-    // Try to load from saved trips first
-    const savedTrips = loadTrips();
-    const savedTrip = savedTrips.find(t => t.id === id);
+    (async () => {
+      // Try to load from saved trips first
+      const savedTrips = await loadTrips();
+      const savedTrip = savedTrips.find(t => t.id === id);
 
-    if (savedTrip) {
-      setTrip(savedTrip);
-      setIsPlaceholder(false);
-    } else {
-      // Try to load from placeholder trips
-      const placeholderTrip = PLACEHOLDER_TRIPS.find(t => t.id === id);
-      if (placeholderTrip) {
-        setTrip(placeholderTrip);
-        setIsPlaceholder(true);
+      if (savedTrip) {
+        setTrip(savedTrip);
+        setIsPlaceholder(false);
+      } else {
+        // Try to load from placeholder trips
+        const placeholderTrip = PLACEHOLDER_TRIPS.find(t => t.id === id);
+        if (placeholderTrip) {
+          setTrip(placeholderTrip);
+          setIsPlaceholder(true);
+        }
       }
-    }
+    })();
   }, [id]);
 
   if (!trip) {
@@ -359,15 +361,15 @@ const TripView = () => {
     t + d.activities.reduce((s, a) => s + (a.cost || 0), 0), 0
   );
 
-  const handleSaveTrip = () => {
-    saveTrip(trip);
+  const handleSaveTrip = async () => {
+    await saveTrip(trip);
     setIsPlaceholder(false);
     toast.success("Trip saved to My Trips!");
   };
 
-  const handleEditTrip = () => {
+  const handleEditTrip = async () => {
     if (isPlaceholder) {
-      saveTrip(trip);
+      await saveTrip(trip);
       toast.success("Trip saved! Opening editor...");
     }
     navigate(`/builder/${trip.id}`);

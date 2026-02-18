@@ -429,23 +429,25 @@ const TripBuilder = () => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(1000);
 
-  const [trip, setTrip] = useState<SavedTrip>(() => {
-    if (id) {
-      const trips = loadTrips();
-      const found = trips.find((t) => t.id === id);
-      if (found) return found;
-    }
-    return {
-      id: generateId(),
-      source: 'custom',
-      title: "My Trip",
-      destination: "",
-      travelers: 1,
-      days: [createEmptyDay(1)],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
+  const [trip, setTrip] = useState<SavedTrip>({
+    id: generateId(),
+    source: 'custom',
+    title: "My Trip",
+    destination: "",
+    travelers: 1,
+    days: [createEmptyDay(1)],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
   });
+
+  // Load existing trip if editing
+  useEffect(() => {
+    if (!id) return;
+    loadTrips().then(trips => {
+      const found = trips.find(t => t.id === id);
+      if (found) setTrip(found);
+    });
+  }, [id]);
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingActivity, setEditingActivity] = useState<BuilderActivity>(createEmptyActivity());
@@ -556,9 +558,9 @@ const TripBuilder = () => {
     });
   };
 
-  const saveTrip = () => {
+  const saveTrip = async () => {
     const updated = { ...trip, updatedAt: new Date().toISOString() };
-    saveToStorage(updated);
+    await saveToStorage(updated);
     toast.success("Trip saved!");
     navigate("/my-trips");
   };

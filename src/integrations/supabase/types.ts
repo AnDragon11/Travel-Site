@@ -14,13 +14,111 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      profiles: {
+        Row: {
+          id: string
+          email: string | null
+          display_name: string | null
+          handle: string | null
+          avatar_url: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id: string
+          email?: string | null
+          display_name?: string | null
+          handle?: string | null
+          avatar_url?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          email?: string | null
+          display_name?: string | null
+          handle?: string | null
+          avatar_url?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      trips: {
+        Row: {
+          id: string
+          user_id: string
+          source: 'ai' | 'custom'
+          title: string
+          destination: string
+          travelers: number
+          days: Json
+          is_favorite: boolean
+          rating: number | null
+          review: string | null
+          photos: string[] | null
+          tags: string[] | null
+          ai_metadata: Json | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          source: 'ai' | 'custom'
+          title: string
+          destination: string
+          travelers: number
+          days: Json
+          is_favorite?: boolean
+          rating?: number | null
+          review?: string | null
+          photos?: string[] | null
+          tags?: string[] | null
+          ai_metadata?: Json | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          source?: 'ai' | 'custom'
+          title?: string
+          destination?: string
+          travelers?: number
+          days?: Json
+          is_favorite?: boolean
+          rating?: number | null
+          review?: string | null
+          photos?: string[] | null
+          tags?: string[] | null
+          ai_metadata?: Json | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trips_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      get_email_by_handle: {
+        Args: { p_handle: string }
+        Returns: string | null
+      }
+      is_handle_available: {
+        Args: { p_handle: string }
+        Returns: boolean
+      }
     }
     Enums: {
       [_ in never]: never

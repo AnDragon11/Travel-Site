@@ -18,8 +18,8 @@ const MyTrips = () => {
   const [activeTab, setActiveTab] = useState<TabType>('all');
   const [showMap, setShowMap] = useState(true);
 
-  const loadAllTrips = () => {
-    const allTrips = loadTrips();
+  const loadAllTrips = async () => {
+    const allTrips = await loadTrips();
     setTrips(allTrips);
   };
 
@@ -27,16 +27,16 @@ const MyTrips = () => {
     loadAllTrips();
   }, []);
 
-  const handleDelete = (id: string) => {
-    deleteTrip(id);
-    loadAllTrips();
+  const handleDelete = async (id: string) => {
+    await deleteTrip(id);
+    await loadAllTrips();
     toast.success("Trip deleted");
   };
 
-  const toggleFavorite = (trip: SavedTrip) => {
+  const toggleFavorite = async (trip: SavedTrip) => {
     const updated = { ...trip, isFavorite: !trip.isFavorite };
-    saveTrip(updated);
-    loadAllTrips();
+    await saveTrip(updated);
+    await loadAllTrips();
     toast.success(updated.isFavorite ? "Added to favorites" : "Removed from favorites");
   };
 
