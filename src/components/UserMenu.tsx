@@ -107,11 +107,11 @@ const UserMenu = () => {
         {!isGuest && (
           <>
             <button
-              onClick={() => handleNavigate("/profile")}
+              onClick={() => handleNavigate("/profile-settings")}
               className="w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm text-foreground hover:bg-accent transition-colors text-left"
             >
               <User className="w-4 h-4 text-muted-foreground shrink-0" />
-              Profile
+              Profile Settings
             </button>
             <Separator className="my-1" />
           </>

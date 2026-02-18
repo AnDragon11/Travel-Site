@@ -7,6 +7,8 @@ const LOCAL_KEY = 'diarytrips_trips';
 const LEGACY_BUILDER_KEY = 'diarytrips_builder_trips';
 const LEGACY_SAVED_KEY = 'diarytrips_saved_trips';
 
+const generateId = () => Math.random().toString(36).substring(2, 11);
+
 // ─── helpers ────────────────────────────────────────────────────────
 
 const rowToSavedTrip = (row: {
@@ -17,6 +19,8 @@ const rowToSavedTrip = (row: {
   travelers: number;
   days: unknown;
   is_favorite: boolean;
+  is_public: boolean;
+  is_bucket_list: boolean;
   rating: number | null;
   review: string | null;
   photos: string[] | null;
@@ -26,7 +30,7 @@ const rowToSavedTrip = (row: {
   updated_at: string;
 }): SavedTrip => ({
   id: row.id,
-  source: row.source as 'ai' | 'custom',
+  source: row.source as SavedTrip['source'],
   createdAt: row.created_at,
   updatedAt: row.updated_at,
   title: row.title,
@@ -34,6 +38,8 @@ const rowToSavedTrip = (row: {
   travelers: row.travelers,
   days: (row.days as SavedTrip['days']) ?? [],
   isFavorite: row.is_favorite,
+  isPublic: row.is_public,
+  isBucketList: row.is_bucket_list,
   rating: row.rating ?? undefined,
   review: row.review ?? undefined,
   photos: row.photos ?? undefined,
@@ -47,8 +53,6 @@ const loadLocalTrips = (): SavedTrip[] => {
   try {
     const raw = localStorage.getItem(LOCAL_KEY);
     if (raw) return JSON.parse(raw);
-
-    // Legacy migration
     const migrated: SavedTrip[] = [];
     const legacyBuilder = localStorage.getItem(LEGACY_BUILDER_KEY);
     if (legacyBuilder) migrated.push(...JSON.parse(legacyBuilder));
@@ -88,7 +92,6 @@ const loadSupabaseTrips = async (): Promise<SavedTrip[]> => {
     .from("trips")
     .select("*")
     .order("created_at", { ascending: false });
-
   if (error) { console.error("loadTrips:", error.message); return []; }
   return data.map(rowToSavedTrip);
 };
@@ -103,6 +106,8 @@ const saveSupabaseTrip = async (trip: SavedTrip, userId: string): Promise<void> 
     travelers: trip.travelers,
     days: trip.days as unknown as Json,
     is_favorite: trip.isFavorite ?? false,
+    is_public: trip.isPublic ?? true,
+    is_bucket_list: trip.isBucketList ?? false,
     rating: trip.rating ?? null,
     review: trip.review ?? null,
     photos: trip.photos ?? null,
@@ -110,7 +115,6 @@ const saveSupabaseTrip = async (trip: SavedTrip, userId: string): Promise<void> 
     ai_metadata: (trip.aiMetadata ?? null) as unknown as Json,
     updated_at: new Date().toISOString(),
   }, { onConflict: "id" });
-
   if (error) throw new Error(error.message);
 };
 
@@ -119,7 +123,7 @@ const deleteSupabaseTrip = async (id: string): Promise<void> => {
   if (error) throw new Error(error.message);
 };
 
-// ─── Public API (hybrid: local for guests, Supabase for users) ──────
+// ─── Public API ──────────────────────────────────────────────────────
 
 export const loadTrips = async (): Promise<SavedTrip[]> => {
   const { data: { user } } = await supabase.auth.getUser();
@@ -129,39 +133,75 @@ export const loadTrips = async (): Promise<SavedTrip[]> => {
 
 export const saveTrip = async (trip: SavedTrip): Promise<void> => {
   const { data: { user } } = await supabase.auth.getUser();
-  if (user) {
-    await saveSupabaseTrip(trip, user.id);
-  } else {
-    saveLocalTrip(trip);
-  }
+  if (user) await saveSupabaseTrip(trip, user.id);
+  else saveLocalTrip(trip);
 };
 
 export const deleteTrip = async (id: string): Promise<void> => {
   const { data: { user } } = await supabase.auth.getUser();
-  if (user) {
-    await deleteSupabaseTrip(id);
-  } else {
-    deleteLocalTrip(id);
-  }
+  if (user) await deleteSupabaseTrip(id);
+  else deleteLocalTrip(id);
 };
 
-// ─── Migration: localStorage → Supabase (called after sign-in) ──────
+/** Toggle a trip's public/private visibility */
+export const setTripPublic = async (id: string, isPublic: boolean): Promise<void> => {
+  const { error } = await supabase.from("trips").update({ is_public: isPublic }).eq("id", id);
+  if (error) throw new Error(error.message);
+};
+
+/** Copy another user's trip into the current user's bucket list */
+export const copyToBucketList = async (trip: SavedTrip): Promise<void> => {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Must be signed in to add to bucket list");
+  const copy: SavedTrip = {
+    ...trip,
+    id: generateId(),
+    source: 'bucket_list',
+    isBucketList: true,
+    isPublic: false,
+    isFavorite: false,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  await saveSupabaseTrip(copy, user.id);
+};
+
+/** Load bucket list trips for the current user */
+export const loadBucketList = async (): Promise<SavedTrip[]> => {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
+  const { data, error } = await supabase
+    .from("trips")
+    .select("*")
+    .eq("is_bucket_list", true)
+    .order("created_at", { ascending: false });
+  if (error) { console.error("loadBucketList:", error.message); return []; }
+  return data.map(rowToSavedTrip);
+};
+
+/** Load public diary trips for any user (for viewing their profile) */
+export const loadPublicTripsForUser = async (userId: string): Promise<SavedTrip[]> => {
+  const { data, error } = await supabase
+    .from("trips")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("is_public", true)
+    .eq("is_bucket_list", false)
+    .order("created_at", { ascending: false });
+  if (error) { console.error("loadPublicTripsForUser:", error.message); return []; }
+  return data.map(rowToSavedTrip);
+};
+
+// ─── Migration ───────────────────────────────────────────────────────
 
 export const migrateLocalToSupabase = async (): Promise<void> => {
   const localTrips = loadLocalTrips();
   if (localTrips.length === 0) return;
-
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return;
-
   for (const trip of localTrips) {
-    try {
-      await saveSupabaseTrip(trip, user.id);
-    } catch (e) {
-      console.error("Migration failed for trip", trip.id, e);
-    }
+    try { await saveSupabaseTrip(trip, user.id); }
+    catch (e) { console.error("Migration failed for trip", trip.id, e); }
   }
-
-  // Clear local storage after successful migration
   localStorage.removeItem(LOCAL_KEY);
 };

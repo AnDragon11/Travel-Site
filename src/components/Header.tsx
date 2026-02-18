@@ -16,7 +16,7 @@ const Header = () => {
 
   const navLinks = [
     { href: "/", label: "Plan Trip" },
-    { href: "/my-trips", label: "My Trips" },
+    { href: "/profile", label: "Profile" },
     { href: "/explore", label: "Explore" },
     { href: "/about", label: "About" },
   ];
@@ -50,7 +50,7 @@ const Header = () => {
                 to={link.href}
                 className={`${isActive(link.href) ? "nav-link-active" : "nav-link"} flex items-center gap-2`}
               >
-                {link.label === "My Trips" && <Briefcase className="w-4 h-4" />}
+                {link.label === "Profile" && <Briefcase className="w-4 h-4" />}
                 {link.label === "Explore" && <Globe className="w-4 h-4" />}
                 {link.label}
               </Link>
@@ -94,7 +94,7 @@ const Header = () => {
                   className={`px-3 py-2.5 rounded-lg flex items-center gap-2 ${isActive(link.href) ? "nav-link-active bg-accent" : "nav-link"}`}
                   onClick={() => setIsMenuOpen(false)}
                 >
-                  {link.label === "My Trips" && <Briefcase className="w-4 h-4" />}
+                  {link.label === "Profile" && <Briefcase className="w-4 h-4" />}
                   {link.label === "Explore" && <Globe className="w-4 h-4" />}
                   {link.label}
                 </Link>
@@ -115,7 +115,7 @@ const Header = () => {
                   {/* Profile — auth only */}
                   {user && (
                     <Link
-                      to="/profile"
+                      to="/profile-settings"
                       onClick={() => setIsMenuOpen(false)}
                       className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm nav-link"
                     >
