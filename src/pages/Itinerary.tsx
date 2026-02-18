@@ -363,21 +363,21 @@ const Itinerary = () => {
   // Save and customize handlers
   const { clearTrip } = useTripContext();
 
-  const handleSaveTrip = () => {
+  const handleSaveTrip = async () => {
     if (!itinerary) return;
 
     const savedTrip = convertItineraryToTrip(itinerary);
-    saveTrip(savedTrip);
+    await saveTrip(savedTrip);
     setIsSaved(true);
     clearTrip(); // Clear temp storage after permanent save
     toast.success("Trip saved permanently!");
   };
 
-  const handleCustomize = () => {
+  const handleCustomize = async () => {
     if (!itinerary) return;
 
     const savedTrip = convertItineraryToTrip(itinerary);
-    saveTrip(savedTrip);
+    await saveTrip(savedTrip);
     navigate(`/builder/${savedTrip.id}`);
     toast.success("Opening trip in editor...");
   };
