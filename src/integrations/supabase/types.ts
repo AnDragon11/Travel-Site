@@ -21,6 +21,7 @@ export type Database = {
           display_name: string | null
           handle: string | null
           avatar_url: string | null
+          bio: string | null
           created_at: string
           updated_at: string
         }
@@ -30,6 +31,7 @@ export type Database = {
           display_name?: string | null
           handle?: string | null
           avatar_url?: string | null
+          bio?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -39,6 +41,7 @@ export type Database = {
           display_name?: string | null
           handle?: string | null
           avatar_url?: string | null
+          bio?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -48,12 +51,14 @@ export type Database = {
         Row: {
           id: string
           user_id: string
-          source: 'ai' | 'custom'
+          source: 'ai' | 'custom' | 'bucket_list'
           title: string
           destination: string
           travelers: number
           days: Json
           is_favorite: boolean
+          is_public: boolean
+          is_bucket_list: boolean
           rating: number | null
           review: string | null
           photos: string[] | null
@@ -65,12 +70,14 @@ export type Database = {
         Insert: {
           id?: string
           user_id: string
-          source: 'ai' | 'custom'
+          source: 'ai' | 'custom' | 'bucket_list'
           title: string
           destination: string
           travelers: number
           days: Json
           is_favorite?: boolean
+          is_public?: boolean
+          is_bucket_list?: boolean
           rating?: number | null
           review?: string | null
           photos?: string[] | null
@@ -82,12 +89,14 @@ export type Database = {
         Update: {
           id?: string
           user_id?: string
-          source?: 'ai' | 'custom'
+          source?: 'ai' | 'custom' | 'bucket_list'
           title?: string
           destination?: string
           travelers?: number
           days?: Json
           is_favorite?: boolean
+          is_public?: boolean
+          is_bucket_list?: boolean
           rating?: number | null
           review?: string | null
           photos?: string[] | null

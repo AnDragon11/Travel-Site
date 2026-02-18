@@ -7,7 +7,7 @@ import { BuilderDay } from "@/pages/TripBuilder";
 export interface SavedTrip {
   // Metadata
   id: string;
-  source: 'ai' | 'custom';
+  source: 'ai' | 'custom' | 'bucket_list';
   createdAt: string;
   updatedAt: string;
 
@@ -20,6 +20,8 @@ export interface SavedTrip {
   days: BuilderDay[];
 
   // Trip Diary features
+  isPublic?: boolean;
+  isBucketList?: boolean;
   isFavorite?: boolean;
   rating?: number;              // 1-5 stars
   review?: string;              // User's trip review/notes
