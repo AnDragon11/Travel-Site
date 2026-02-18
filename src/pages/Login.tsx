@@ -12,14 +12,15 @@ const Login = () => {
   const location = useLocation();
   const from = (location.state as { from?: string })?.from ?? "/my-trips";
 
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!identifier.trim()) { toast.error("Please enter your email or handle"); return; }
     setLoading(true);
-    const { error } = await signIn(email, password);
+    const { error } = await signIn(identifier, password);
     setLoading(false);
 
     if (error) {
@@ -45,14 +46,15 @@ const Login = () => {
             <form onSubmit={handleSubmit} className="space-y-5">
               <div>
                 <label className="block text-sm font-medium text-foreground mb-1.5">
-                  Email
+                  Email, @handle, or phone
                 </label>
                 <input
-                  type="email"
+                  type="text"
                   required
-                  value={email}
-                  onChange={e => setEmail(e.target.value)}
-                  placeholder="you@example.com"
+                  value={identifier}
+                  onChange={e => setIdentifier(e.target.value)}
+                  placeholder="you@example.com or @handle"
+                  autoComplete="username"
                   className="w-full px-4 py-2.5 rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 transition"
                 />
               </div>
@@ -67,6 +69,7 @@ const Login = () => {
                   value={password}
                   onChange={e => setPassword(e.target.value)}
                   placeholder="••••••••"
+                  autoComplete="current-password"
                   className="w-full px-4 py-2.5 rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 transition"
                 />
               </div>

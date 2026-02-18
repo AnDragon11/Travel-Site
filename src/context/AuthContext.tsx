@@ -7,12 +7,20 @@ interface AuthContextType {
   user: User | null;
   session: Session | null;
   loading: boolean;
-  signUp: (email: string, password: string, displayName?: string) => Promise<{ error: Error | null }>;
-  signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
+  signUp: (email: string, password: string, displayName?: string, handle?: string) => Promise<{ error: Error | null }>;
+  signIn: (identifier: string, password: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+/** Detect whether a string looks like an email vs a handle vs a phone number */
+function identifierType(value: string): "email" | "handle" | "phone" {
+  const v = value.trim();
+  if (v.startsWith("+") || /^\+?[\d\s\-().]{7,}$/.test(v)) return "phone";
+  if (v.includes("@") && !v.startsWith("@")) return "email";
+  return "handle";
+}
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
@@ -20,14 +28,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
     });
 
-    // Listen for auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       setUser(session?.user ?? null);
@@ -37,21 +43,40 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return () => subscription.unsubscribe();
   }, []);
 
-  const signUp = async (email: string, password: string, displayName?: string) => {
+  const signUp = async (email: string, password: string, displayName?: string, handle?: string) => {
     const { error } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        data: { display_name: displayName ?? "" },
+        data: {
+          display_name: displayName ?? "",
+          handle: handle ? handle.toLowerCase().trim() : "",
+        },
       },
     });
     return { error };
   };
 
-  const signIn = async (email: string, password: string) => {
+  const signIn = async (identifier: string, password: string) => {
+    let email = identifier.trim();
+
+    const type = identifierType(email);
+
+    if (type === "handle") {
+      // Strip leading @ if present
+      const handle = email.startsWith("@") ? email.slice(1) : email;
+      const { data, error: lookupError } = await supabase.rpc("get_email_by_handle", { p_handle: handle });
+      if (lookupError || !data) {
+        return { error: new Error("No account found with that handle") };
+      }
+      email = data;
+    } else if (type === "phone") {
+      // Phone login not yet supported without Supabase phone auth (paid plan)
+      return { error: new Error("Phone login is not yet enabled") };
+    }
+
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (!error) {
-      // Migrate any guest localStorage trips to Supabase after login
       await migrateLocalToSupabase();
     }
     return { error };

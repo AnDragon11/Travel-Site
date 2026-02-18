@@ -26,6 +26,14 @@ const CURRENCIES: { value: Currency; label: string }[] = [
   { value: "AUD", label: "AUD A$" },
 ];
 
+// Generic silhouette shown for guest users
+const GuestAvatar = ({ className }: { className?: string }) => (
+  <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">
+    <circle cx="12" cy="8" r="3.5" />
+    <path d="M20 21a8 8 0 1 0-16 0h16Z" />
+  </svg>
+);
+
 const UserMenu = () => {
   const [open, setOpen] = useState(false);
   const { user, signOut } = useAuth();
@@ -33,7 +41,8 @@ const UserMenu = () => {
   const { dateFormat, setDateFormat, currency, setCurrency } = usePreferences();
   const navigate = useNavigate();
 
-  const displayName = user?.user_metadata?.display_name || user?.email || "";
+  const isGuest = !user;
+  const displayName = isGuest ? "Guest" : (user?.user_metadata?.display_name || user?.email || "");
   const initials = displayName.slice(0, 2).toUpperCase();
 
   const handleSignOut = async () => {
@@ -57,9 +66,16 @@ const UserMenu = () => {
           className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-muted hover:bg-accent transition-colors text-sm font-medium text-foreground"
           aria-label="User menu"
         >
-          <div className="w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold shrink-0">
-            {initials}
-          </div>
+          {/* Avatar */}
+          {isGuest ? (
+            <div className="w-6 h-6 rounded-full bg-muted-foreground/15 flex items-center justify-center shrink-0">
+              <GuestAvatar className="w-4 h-4 text-muted-foreground" />
+            </div>
+          ) : (
+            <div className="w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold shrink-0">
+              {initials}
+            </div>
+          )}
           <span className="max-w-[110px] truncate hidden sm:block">
             {displayName}
           </span>
@@ -69,23 +85,37 @@ const UserMenu = () => {
 
       <PopoverContent align="end" sideOffset={8} className="w-64 p-1">
         {/* User info header */}
-        <div className="px-3 py-2.5 mb-1">
-          <p className="text-sm font-semibold text-foreground truncate">{displayName}</p>
-          <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
+        <div className="px-3 py-2.5 mb-1 flex items-center gap-2.5">
+          {isGuest ? (
+            <div className="w-8 h-8 rounded-full bg-muted-foreground/15 flex items-center justify-center shrink-0">
+              <GuestAvatar className="w-5 h-5 text-muted-foreground" />
+            </div>
+          ) : (
+            <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm font-bold shrink-0">
+              {initials}
+            </div>
+          )}
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-foreground truncate">{displayName}</p>
+            <p className="text-xs text-muted-foreground truncate">{isGuest ? "Not signed in" : user?.email}</p>
+          </div>
         </div>
 
         <Separator className="mb-1" />
 
-        {/* Profile */}
-        <button
-          onClick={() => handleNavigate("/profile")}
-          className="w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm text-foreground hover:bg-accent transition-colors text-left"
-        >
-          <User className="w-4 h-4 text-muted-foreground shrink-0" />
-          Profile
-        </button>
-
-        <Separator className="my-1" />
+        {/* Profile — authenticated only */}
+        {!isGuest && (
+          <>
+            <button
+              onClick={() => handleNavigate("/profile")}
+              className="w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm text-foreground hover:bg-accent transition-colors text-left"
+            >
+              <User className="w-4 h-4 text-muted-foreground shrink-0" />
+              Profile
+            </button>
+            <Separator className="my-1" />
+          </>
+        )}
 
         {/* Appearance */}
         <div className="px-3 py-2">
@@ -143,14 +173,24 @@ const UserMenu = () => {
 
         <Separator className="my-1" />
 
-        {/* Sign Out */}
-        <button
-          onClick={handleSignOut}
-          className="w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm text-destructive hover:bg-destructive/10 transition-colors text-left"
-        >
-          <LogOut className="w-4 h-4 shrink-0" />
-          Sign Out
-        </button>
+        {/* Sign In / Sign Out */}
+        {isGuest ? (
+          <button
+            onClick={() => handleNavigate("/login")}
+            className="w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm text-foreground hover:bg-accent transition-colors text-left"
+          >
+            <LogOut className="w-4 h-4 shrink-0 rotate-180" />
+            Sign In
+          </button>
+        ) : (
+          <button
+            onClick={handleSignOut}
+            className="w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm text-destructive hover:bg-destructive/10 transition-colors text-left"
+          >
+            <LogOut className="w-4 h-4 shrink-0" />
+            Sign Out
+          </button>
+        )}
       </PopoverContent>
     </Popover>
   );

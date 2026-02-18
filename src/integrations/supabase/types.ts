@@ -19,6 +19,7 @@ export type Database = {
           id: string
           email: string | null
           display_name: string | null
+          handle: string | null
           avatar_url: string | null
           created_at: string
           updated_at: string
@@ -27,6 +28,7 @@ export type Database = {
           id: string
           email?: string | null
           display_name?: string | null
+          handle?: string | null
           avatar_url?: string | null
           created_at?: string
           updated_at?: string
@@ -35,6 +37,7 @@ export type Database = {
           id?: string
           email?: string | null
           display_name?: string | null
+          handle?: string | null
           avatar_url?: string | null
           created_at?: string
           updated_at?: string
@@ -108,7 +111,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      get_email_by_handle: {
+        Args: { p_handle: string }
+        Returns: string | null
+      }
+      is_handle_available: {
+        Args: { p_handle: string }
+        Returns: boolean
+      }
     }
     Enums: {
       [_ in never]: never

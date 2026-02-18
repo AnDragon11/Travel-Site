@@ -57,48 +57,22 @@ const Header = () => {
             ))}
           </nav>
 
-          {/* Right side */}
+          {/* Right side — desktop */}
           <div className="hidden md:flex items-center gap-2">
             {!loading && (
-              user ? (
-                <UserMenu />
-              ) : (
-                <>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-                    className="relative rounded-full h-9 w-9"
-                    aria-label="Toggle theme"
-                  >
-                    <Sun className="h-4 w-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-                    <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
-                  </Button>
-                  <Button asChild variant="ghost" size="sm">
-                    <Link to="/login">Sign In</Link>
-                  </Button>
+              <>
+                {!user && (
                   <Button asChild variant="default" size="sm">
                     <Link to="/signup">Sign Up</Link>
                   </Button>
-                </>
-              )
+                )}
+                <UserMenu />
+              </>
             )}
           </div>
 
-          {/* Mobile controls */}
+          {/* Mobile hamburger */}
           <div className="md:hidden flex items-center gap-2">
-            {!loading && !user && (
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-                className="relative rounded-full h-9 w-9"
-                aria-label="Toggle theme"
-              >
-                <Sun className="h-4 w-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-                <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
-              </Button>
-            )}
             <button
               className="p-2 text-foreground"
               onClick={() => setIsMenuOpen(!isMenuOpen)}
@@ -127,16 +101,19 @@ const Header = () => {
               ))}
 
               {!loading && (
-                user ? (
-                  <div className="mt-2 pt-2 border-t border-border/50 space-y-1">
-                    <div className="flex items-center gap-2 px-3 py-2">
-                      <div className="w-7 h-7 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold">
-                        {(user.user_metadata?.display_name || user.email || "").slice(0, 2).toUpperCase()}
-                      </div>
-                      <span className="text-sm font-medium text-foreground truncate">
-                        {user.user_metadata?.display_name || user.email}
-                      </span>
+                <div className="mt-2 pt-2 border-t border-border/50 space-y-1">
+                  {/* User identity row */}
+                  <div className="flex items-center gap-2 px-3 py-2">
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${user ? "bg-primary text-primary-foreground" : "bg-muted-foreground/20 text-muted-foreground"}`}>
+                      {user ? (user.user_metadata?.display_name || user.email || "").slice(0, 2).toUpperCase() : "G"}
                     </div>
+                    <span className="text-sm font-medium text-foreground truncate">
+                      {user ? (user.user_metadata?.display_name || user.email) : "Guest"}
+                    </span>
+                  </div>
+
+                  {/* Profile — auth only */}
+                  {user && (
                     <Link
                       to="/profile"
                       onClick={() => setIsMenuOpen(false)}
@@ -144,32 +121,42 @@ const Header = () => {
                     >
                       <User className="w-4 h-4" /> Profile Settings
                     </Link>
-                    <button
-                      onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-                      className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm nav-link text-left"
-                    >
-                      {theme === "dark"
-                        ? <><Sun className="w-4 h-4" /> Light Mode</>
-                        : <><Moon className="w-4 h-4" /> Dark Mode</>
-                      }
-                    </button>
+                  )}
+
+                  {/* Theme toggle */}
+                  <button
+                    onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+                    className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm nav-link text-left"
+                  >
+                    {theme === "dark"
+                      ? <><Sun className="w-4 h-4" /> Light Mode</>
+                      : <><Moon className="w-4 h-4" /> Dark Mode</>
+                    }
+                  </button>
+
+                  {/* Sign In / Sign Out */}
+                  {user ? (
                     <button
                       onClick={handleSignOut}
                       className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm text-destructive hover:bg-destructive/10 transition-colors text-left"
                     >
                       <LogOut className="w-4 h-4" /> Sign Out
                     </button>
-                  </div>
-                ) : (
-                  <div className="mt-2 pt-2 border-t border-border/50 space-y-2">
-                    <Button asChild variant="ghost" className="w-full">
-                      <Link to="/login" onClick={() => setIsMenuOpen(false)}>Sign In</Link>
-                    </Button>
-                    <Button asChild variant="default" className="w-full">
-                      <Link to="/signup" onClick={() => setIsMenuOpen(false)}>Sign Up</Link>
-                    </Button>
-                  </div>
-                )
+                  ) : (
+                    <>
+                      <Link
+                        to="/login"
+                        onClick={() => setIsMenuOpen(false)}
+                        className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm nav-link"
+                      >
+                        <LogOut className="w-4 h-4 rotate-180" /> Sign In
+                      </Link>
+                      <Button asChild variant="default" className="w-full mt-1">
+                        <Link to="/signup" onClick={() => setIsMenuOpen(false)}>Sign Up</Link>
+                      </Button>
+                    </>
+                  )}
+                </div>
               )}
             </div>
           </nav>
