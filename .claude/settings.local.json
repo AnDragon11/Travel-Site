@@ -14,7 +14,8 @@
       "Bash(npm run dev:*)",
       "Bash(python3:*)",
       "Bash(git merge:*)",
-      "Bash(~/.bun/bin/bun run build:*)"
+      "Bash(~/.bun/bin/bun run build:*)",
+      "Bash(supabase:*)"
     ]
   }
 }

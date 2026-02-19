@@ -362,9 +362,7 @@ export const submitTripRequest = async (formData: TripFormData): Promise<TripIti
   try {
     const response = await fetch(webhookUrl, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(formData),
       signal: controller.signal,
     });
