@@ -343,28 +343,27 @@ const generatePlaceholder = (formData: TripFormData): TripItinerary => {
 };
 
 /**
- * Submit trip request to n8n webhook via edge function.
- * Waits up to ~45s for a real response; falls back to placeholder on timeout/error.
+ * Submit trip request directly to n8n webhook.
+ * Waits up to 120s for a real response; falls back to placeholder on timeout/error.
  */
 export const submitTripRequest = async (formData: TripFormData): Promise<TripItinerary> => {
   console.log("=== Trip Planning Request ===");
   console.log("Form Data:", JSON.stringify(formData, null, 2));
 
-  // Use a custom AbortController to allow up to 60s for the edge function
-  // (the default fetch timeout is much shorter and causes premature fallback)
+  const webhookUrl = import.meta.env.VITE_N8N_WEBHOOK_URL;
+  if (!webhookUrl) {
+    console.warn("VITE_N8N_WEBHOOK_URL not set, using placeholder");
+    return generatePlaceholder(formData);
+  }
+
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 120000);
 
   try {
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-    const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-
-    const response = await fetch(`${supabaseUrl}/functions/v1/generate-itinerary`, {
+    const response = await fetch(webhookUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "apikey": supabaseKey,
-        "Authorization": `Bearer ${supabaseKey}`,
       },
       body: JSON.stringify(formData),
       signal: controller.signal,

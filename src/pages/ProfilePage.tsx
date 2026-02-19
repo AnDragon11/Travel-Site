@@ -164,7 +164,7 @@ const TripCard = ({
 // ─── Main ProfilePage component ───────────────────────────────────────
 const ProfilePage = () => {
   const { handle } = useParams<{ handle?: string }>();
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
 
   // Is this the viewer's own profile?
@@ -174,62 +174,79 @@ const ProfilePage = () => {
   const [diaryTrips, setDiaryTrips] = useState<SavedTrip[]>([]);
   const [bucketList, setBucketList] = useState<SavedTrip[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [tab, setTab] = useState<"diary" | "bucket">("diary");
   const [showMap, setShowMap] = useState(true);
   const [markers, setMarkers] = useState<{ coord: GeoCoord; trip: SavedTrip }[]>([]);
 
   // ── Load profile + trips ──────────────────────────────────────────
   useEffect(() => {
+    if (authLoading) return; // wait for auth session to be restored
+
+    let cancelled = false; // abort if effect re-runs
+
     const load = async () => {
       setLoading(true);
+      setLoadError(false);
+      try {
+        if (isOwn) {
+          // Own profile — need to be logged in
+          if (!user) { navigate("/login"); return; }
 
-      if (isOwn) {
-        // Own profile — need to be logged in
-        if (!user) { navigate("/login"); return; }
+          if (cancelled) return;
+          const meta = user.user_metadata;
+          setProfile({
+            id: user.id,
+            display_name: meta?.display_name ?? null,
+            handle: meta?.handle ?? null,
+            avatar_url: meta?.avatar_url ?? null,
+            bio: null, // loaded from profiles table below
+          });
 
-        const meta = user.user_metadata;
-        setProfile({
-          id: user.id,
-          display_name: meta?.display_name ?? null,
-          handle: meta?.handle ?? null,
-          avatar_url: meta?.avatar_url ?? null,
-          bio: null, // loaded from profiles table below
-        });
+          // Also fetch bio from profiles table (ignore error — column may not exist yet)
+          const { data: profileRow } = await supabase
+            .from("profiles").select("bio").eq("id", user.id).maybeSingle();
+          if (cancelled) return;
+          if (profileRow) {
+            setProfile(p => p ? { ...p, bio: (profileRow as { bio?: string | null }).bio ?? null } : p);
+          }
 
-        // Also fetch bio from profiles table
-        const { data: profileRow } = await supabase
-          .from("profiles").select("bio").eq("id", user.id).single();
-        if (profileRow) {
-          setProfile(p => p ? { ...p, bio: profileRow.bio } : p);
+          const [trips, bucket] = await Promise.all([loadTrips(), loadBucketList()]);
+          if (cancelled) return;
+          setDiaryTrips(trips.filter(t => !t.isBucketList));
+          setBucketList(bucket);
+        } else {
+          // Other user's profile
+          const { data: profileRow, error } = await supabase
+            .from("profiles")
+            .select("id, display_name, handle, avatar_url, bio")
+            .eq("handle", handle)
+            .maybeSingle();
+
+          if (cancelled) return;
+          if (error || !profileRow) {
+            toast.error("Profile not found");
+            navigate("/explore");
+            return;
+          }
+
+          setProfile(profileRow);
+          const trips = await loadPublicTripsForUser(profileRow.id);
+          if (cancelled) return;
+          setDiaryTrips(trips);
+          setBucketList([]); // other users' bucket lists are private
         }
-
-        const [trips, bucket] = await Promise.all([loadTrips(), loadBucketList()]);
-        setDiaryTrips(trips.filter(t => !t.isBucketList));
-        setBucketList(bucket);
-      } else {
-        // Other user's profile
-        const { data: profileRow, error } = await supabase
-          .from("profiles")
-          .select("id, display_name, handle, avatar_url, bio")
-          .eq("handle", handle)
-          .single();
-
-        if (error || !profileRow) {
-          toast.error("Profile not found");
-          navigate("/explore");
-          return;
-        }
-
-        setProfile(profileRow);
-        const trips = await loadPublicTripsForUser(profileRow.id);
-        setDiaryTrips(trips);
-        setBucketList([]); // other users' bucket lists are private
+      } catch (err) {
+        if (cancelled) return;
+        console.error("ProfilePage load error:", err);
+        setLoadError(true);
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-
-      setLoading(false);
     };
     load();
-  }, [handle, user, isOwn, navigate]);
+    return () => { cancelled = true; };
+  }, [handle, user, isOwn, navigate, authLoading]);
 
   // ── Geocode destinations for map ──────────────────────────────────
   useEffect(() => {
@@ -287,7 +304,23 @@ const ProfilePage = () => {
     );
   }
 
-  if (!profile) return null;
+  if (loadError || !profile) {
+    return (
+      <div className="min-h-screen flex flex-col">
+        <Header />
+        <main className="flex-1 pt-16 flex flex-col items-center justify-center gap-4">
+          <p className="text-muted-foreground">Could not load profile.</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="text-sm text-primary underline"
+          >
+            Try again
+          </button>
+        </main>
+        <Footer />
+      </div>
+    );
+  }
 
   const displayName = profile.display_name || profile.handle || "User";
   const initials = displayName.slice(0, 2).toUpperCase();

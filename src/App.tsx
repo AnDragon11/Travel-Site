@@ -16,7 +16,6 @@ import { Navigate } from "react-router-dom";
 import TripBuilder from "./pages/TripBuilder";
 import Explore from "./pages/Explore";
 import TripView from "./pages/TripView";
-import About from "./pages/About";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 
@@ -37,7 +36,6 @@ const App = () => (
               <Routes>
                 <Route path="/" element={<Planner />} />
                 <Route path="/explore" element={<Explore />} />
-                <Route path="/about" element={<About />} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/signup" element={<Signup />} />
                 <Route path="/profile" element={<ProfilePage />} />

@@ -125,20 +125,26 @@ const deleteSupabaseTrip = async (id: string): Promise<void> => {
 
 // ─── Public API ──────────────────────────────────────────────────────
 
+// Use getSession() (local cache) instead of getUser() (server round-trip)
+const getSessionUser = async () => {
+  const { data: { session } } = await supabase.auth.getSession();
+  return session?.user ?? null;
+};
+
 export const loadTrips = async (): Promise<SavedTrip[]> => {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getSessionUser();
   if (user) return loadSupabaseTrips();
   return loadLocalTrips();
 };
 
 export const saveTrip = async (trip: SavedTrip): Promise<void> => {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getSessionUser();
   if (user) await saveSupabaseTrip(trip, user.id);
   else saveLocalTrip(trip);
 };
 
 export const deleteTrip = async (id: string): Promise<void> => {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getSessionUser();
   if (user) await deleteSupabaseTrip(id);
   else deleteLocalTrip(id);
 };
@@ -151,11 +157,11 @@ export const setTripPublic = async (id: string, isPublic: boolean): Promise<void
 
 /** Copy another user's trip into the current user's bucket list */
 export const copyToBucketList = async (trip: SavedTrip): Promise<void> => {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getSessionUser();
   if (!user) throw new Error("Must be signed in to add to bucket list");
   const copy: SavedTrip = {
     ...trip,
-    id: generateId(),
+    id: crypto.randomUUID(),
     source: 'bucket_list',
     isBucketList: true,
     isPublic: false,
@@ -168,7 +174,7 @@ export const copyToBucketList = async (trip: SavedTrip): Promise<void> => {
 
 /** Load bucket list trips for the current user */
 export const loadBucketList = async (): Promise<SavedTrip[]> => {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getSessionUser();
   if (!user) return [];
   const { data, error } = await supabase
     .from("trips")
@@ -197,7 +203,7 @@ export const loadPublicTripsForUser = async (userId: string): Promise<SavedTrip[
 export const migrateLocalToSupabase = async (): Promise<void> => {
   const localTrips = loadLocalTrips();
   if (localTrips.length === 0) return;
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getSessionUser();
   if (!user) return;
   for (const trip of localTrips) {
     try { await saveSupabaseTrip(trip, user.id); }

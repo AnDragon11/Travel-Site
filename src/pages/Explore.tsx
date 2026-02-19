@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
-import { MapPin, Calendar, Users, Star, Heart, Clock, Compass, Filter, Search, X } from "lucide-react";
+import { MapPin, Calendar, Users, Heart, Compass, Filter, Search, X } from "lucide-react";
 import { SavedTrip } from "@/lib/tripTypes";
 import { cn } from "@/lib/utils";
 import { loadTrips, saveTrip } from "@/services/storageService";
@@ -128,7 +128,7 @@ const PLACEHOLDER_TRIPS: SavedTrip[] = [
   },
   {
     id: "sample-3",
-    source: "ai",
+    source: "custom",
     createdAt: "2025-01-08T09:15:00Z",
     updatedAt: "2025-01-08T09:15:00Z",
     title: "Tokyo Food & Culture Tour",
@@ -182,13 +182,7 @@ const PLACEHOLDER_TRIPS: SavedTrip[] = [
           }
         ]
       }
-    ],
-    aiMetadata: {
-      comfortLevel: 2,
-      comfortLevelName: "Comfort",
-      comfortLevelEmoji: "⭐",
-      originalDates: "2025-04-20 - 2025-04-20"
-    }
+    ]
   },
   {
     id: "sample-4",
@@ -237,7 +231,7 @@ const PLACEHOLDER_TRIPS: SavedTrip[] = [
   },
   {
     id: "sample-5",
-    source: "ai",
+    source: "custom",
     createdAt: "2025-01-02T11:20:00Z",
     updatedAt: "2025-01-02T11:20:00Z",
     title: "New York City Explorer",
@@ -292,13 +286,7 @@ const PLACEHOLDER_TRIPS: SavedTrip[] = [
           }
         ]
       }
-    ],
-    aiMetadata: {
-      comfortLevel: 2,
-      comfortLevelName: "Comfort",
-      comfortLevelEmoji: "⭐",
-      originalDates: "2025-05-12 - 2025-05-12"
-    }
+    ]
   }
 ];
 
@@ -315,98 +303,78 @@ const Explore = () => {
   const [showFilters, setShowFilters] = useState(false);
   const [savedTrips, setSavedTrips] = useState<SavedTrip[]>([]);
 
-  // Load saved trips on mount
   useEffect(() => {
     loadTrips().then(setSavedTrips);
   }, []);
 
-  // Check if a trip is favorited (either in placeholder or saved trips)
-  const isTripFavorited = (tripId: string): boolean => {
-    const savedTrip = savedTrips.find(t => t.id === tripId);
-    return savedTrip?.isFavorite || false;
+  // Sample trips have non-UUID ids like "sample-5" — match by title instead
+  const isTripFavorited = (trip: SavedTrip): boolean => {
+    if (trip.id.startsWith("sample-")) {
+      return savedTrips.some(t => t.title === trip.title && t.isFavorite);
+    }
+    return savedTrips.find(t => t.id === trip.id)?.isFavorite || false;
   };
 
-  // Toggle favorite for a trip
   const toggleFavorite = async (trip: SavedTrip) => {
-    const existingTrip = savedTrips.find(t => t.id === trip.id);
+    // For sample trips, find the saved copy by title (their ids aren't valid UUIDs)
+    const existingTrip = trip.id.startsWith("sample-")
+      ? savedTrips.find(t => t.title === trip.title)
+      : savedTrips.find(t => t.id === trip.id);
 
     if (existingTrip) {
-      // Trip already saved, just toggle favorite
       const updated = { ...existingTrip, isFavorite: !existingTrip.isFavorite };
-      await saveTrip(updated);
-      setSavedTrips(await loadTrips());
+      // Optimistic update — instant UI, no re-fetch
+      setSavedTrips(prev => prev.map(t => t.id === existingTrip.id ? updated : t));
       toast.success(updated.isFavorite ? "Added to favorites" : "Removed from favorites");
+      saveTrip(updated).catch((e: unknown) => {
+        // Roll back on failure
+        setSavedTrips(prev => prev.map(t => t.id === existingTrip.id ? existingTrip : t));
+        toast.error(e instanceof Error ? e.message : "Failed to save");
+      });
     } else {
-      // New trip, save it with favorite = true
-      const newTrip = { ...trip, isFavorite: true };
-      await saveTrip(newTrip);
-      setSavedTrips(await loadTrips());
-      toast.success("Trip saved and added to favorites!");
+      // New trip — generate a proper UUID so Supabase accepts it
+      const newTrip = { ...trip, id: crypto.randomUUID(), isFavorite: true };
+      setSavedTrips(prev => [...prev, newTrip]);
+      toast.success("Trip saved to favorites!");
+      saveTrip(newTrip).catch((e: unknown) => {
+        setSavedTrips(prev => prev.filter(t => t.id !== newTrip.id));
+        toast.error(e instanceof Error ? e.message : "Failed to save");
+      });
     }
   };
 
-  // Extract unique destinations and tags
   const destinations = Array.from(new Set(PLACEHOLDER_TRIPS.map(t => t.destination)));
   const allTags = Array.from(new Set(PLACEHOLDER_TRIPS.flatMap(t => t.tags || [])));
 
-  // Calculate trip cost
-  const calculateTripCost = (trip: SavedTrip) => {
-    return trip.days.reduce((t, d) =>
-      t + d.activities.reduce((s, a) => s + (a.cost || 0), 0), 0
-    );
-  };
+  const calculateTripCost = (trip: SavedTrip) =>
+    trip.days.reduce((t, d) => t + d.activities.reduce((s, a) => s + (a.cost || 0), 0), 0);
 
-  // Filter and sort trips
+  const hasActiveFilters = !!(searchQuery || selectedDestination || selectedTags.length > 0 ||
+                           minBudget !== null || maxBudget !== null);
+
   const filteredTrips = PLACEHOLDER_TRIPS.filter(trip => {
-    // Search query filter
     if (searchQuery && !trip.title.toLowerCase().includes(searchQuery.toLowerCase()) &&
-        !trip.destination.toLowerCase().includes(searchQuery.toLowerCase())) {
-      return false;
-    }
-
-    // Destination filter
-    if (selectedDestination && trip.destination !== selectedDestination) {
-      return false;
-    }
-
-    // Tags filter
+        !trip.destination.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+    if (selectedDestination && trip.destination !== selectedDestination) return false;
     if (selectedTags.length > 0) {
-      const tripTags = trip.tags || [];
-      if (!selectedTags.some(tag => tripTags.includes(tag))) {
-        return false;
-      }
+      if (!selectedTags.some(tag => (trip.tags || []).includes(tag))) return false;
     }
-
-    // Budget filter
     const tripCost = calculateTripCost(trip);
-    if (minBudget !== null && tripCost < minBudget) {
-      return false;
-    }
-    if (maxBudget !== null && tripCost > maxBudget) {
-      return false;
-    }
-
+    if (minBudget !== null && tripCost < minBudget) return false;
+    if (maxBudget !== null && tripCost > maxBudget) return false;
     return true;
   }).sort((a, b) => {
     switch (sortBy) {
-      case 'recent':
-        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-      case 'popular':
-        return (b.rating || 0) - (a.rating || 0);
-      case 'budget-low':
-        return calculateTripCost(a) - calculateTripCost(b);
-      case 'budget-high':
-        return calculateTripCost(b) - calculateTripCost(a);
-      default:
-        return 0;
+      case 'recent': return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      case 'popular': return (b.rating || 0) - (a.rating || 0);
+      case 'budget-low': return calculateTripCost(a) - calculateTripCost(b);
+      case 'budget-high': return calculateTripCost(b) - calculateTripCost(a);
+      default: return 0;
     }
   });
 
-  const toggleTag = (tag: string) => {
-    setSelectedTags(prev =>
-      prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
-    );
-  };
+  const toggleTag = (tag: string) =>
+    setSelectedTags(prev => prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]);
 
   const clearFilters = () => {
     setSearchQuery("");
@@ -417,137 +385,62 @@ const Explore = () => {
     setSortBy('popular');
   };
 
-  const hasActiveFilters = searchQuery || selectedDestination || selectedTags.length > 0 ||
-                          minBudget !== null || maxBudget !== null;
-
   const TripCard = ({ trip }: { trip: SavedTrip }) => {
     const totalCost = calculateTripCost(trip);
-    const isAI = trip.source === 'ai';
-    const isFavorited = isTripFavorited(trip.id);
+    const isFavorited = isTripFavorited(trip);
+    const coverImage = trip.days[0]?.activities[0]?.image;
 
     return (
-      <div className="bg-card rounded-xl shadow-sm border border-border/50 p-5 hover:shadow-md transition-all relative overflow-hidden group">
-        {/* Sample Trip Badge */}
-        <div className="absolute top-3 right-3 z-10">
-          <span className="inline-flex items-center gap-1 bg-secondary/90 text-secondary-foreground px-3 py-1 rounded-full text-xs font-bold shadow-md">
-            📍 Sample Trip
-          </span>
-        </div>
-
-        {/* Trip Image */}
-        {trip.days[0]?.activities[0]?.image && (
-          <div
-            className="relative h-48 -mx-5 -mt-5 mb-4 overflow-hidden cursor-pointer"
-            onClick={() => navigate(`/trip/${trip.id}`)}
-          >
+      <div
+        className="bg-card rounded-xl border border-border/50 overflow-hidden hover:shadow-md transition-all group cursor-pointer"
+        onClick={() => navigate(`/trip/${trip.id}`)}
+      >
+        {/* Cover image */}
+        <div className="relative aspect-[4/3] bg-muted overflow-hidden">
+          {coverImage ? (
             <img
-              src={trip.days[0].activities[0].image}
+              src={coverImage}
               alt={trip.title}
               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-            <button
-              type="button"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                toggleFavorite(trip);
-              }}
-              className="absolute top-3 left-3 p-2 rounded-full bg-black/30 hover:bg-black/50 transition-colors"
-            >
-              <Heart className={cn("w-5 h-5", isFavorited ? "fill-red-500 text-red-500" : "text-white")} />
-            </button>
-          </div>
-        )}
-
-        <div className="space-y-3">
-          {/* Title */}
-          <div className="flex items-start gap-2">
-            <h3 className="text-xl font-bold text-foreground flex items-center gap-2 flex-wrap flex-1">
-              <MapPin className="w-5 h-5 text-primary shrink-0" />
-              {trip.title}
-              {isAI && trip.aiMetadata && (
-                <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium">
-                  {trip.aiMetadata.comfortLevelEmoji} AI
-                </span>
-              )}
-            </h3>
-          </div>
-
-          {/* Rating */}
-          {trip.rating && (
-            <div className="flex items-center gap-1">
-              {[...Array(5)].map((_, i) => (
-                <Star
-                  key={i}
-                  className={cn(
-                    "w-4 h-4",
-                    i < trip.rating! ? "fill-yellow-400 text-yellow-400" : "text-gray-300"
-                  )}
-                />
-              ))}
-              <span className="text-sm text-muted-foreground ml-1">
-                {trip.rating}/5
-              </span>
+          ) : (
+            <div className="w-full h-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
+              <Compass className="w-8 h-8 text-primary/40" />
             </div>
           )}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
 
-          {/* Review */}
-          {trip.review && (
-            <p className="text-sm text-muted-foreground italic line-clamp-2">
-              "{trip.review}"
-            </p>
-          )}
-
-          {/* Details */}
-          <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
-            <span className="flex items-center gap-1">
-              <MapPin className="w-4 h-4" />
-              {trip.destination}
-            </span>
-            <span className="flex items-center gap-1">
-              <Calendar className="w-4 h-4" />
-              {trip.days.length} day{trip.days.length !== 1 ? 's' : ''}
-            </span>
-            <span className="flex items-center gap-1">
-              <Users className="w-4 h-4" />
-              {trip.travelers} traveler{trip.travelers !== 1 ? 's' : ''}
-            </span>
-            {trip.days[0]?.date && (
-              <span className="flex items-center gap-1">
-                <Clock className="w-4 h-4" />
-                {trip.days[0].date}
-              </span>
-            )}
-          </div>
-
-          {/* Tags */}
-          {trip.tags && trip.tags.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {trip.tags.map((tag, i) => (
-                <span key={i} className="text-xs bg-accent text-accent-foreground px-2 py-1 rounded-full">
-                  {tag}
-                </span>
-              ))}
+          {/* Overlay info at bottom of image */}
+          <div className="absolute bottom-0 left-0 right-0 p-3">
+            <h3 className="font-semibold text-white text-sm line-clamp-1 drop-shadow">{trip.title}</h3>
+            <div className="flex items-center gap-2 mt-1 text-white/80 text-xs">
+              <span className="flex items-center gap-0.5"><MapPin className="w-3 h-3" />{trip.destination}</span>
+              <span>·</span>
+              <span>{trip.days.length}d</span>
+              <span>·</span>
+              <span>{trip.travelers} traveler{trip.travelers !== 1 ? 's' : ''}</span>
             </div>
-          )}
-
-          {/* Cost and Action */}
-          <div className="flex items-center justify-between pt-3 border-t border-border/50">
-            {totalCost > 0 && (
-              <span className="text-lg font-bold text-primary">
-                €{totalCost.toLocaleString()}
-              </span>
-            )}
-            <Button
-              variant="outline"
-              size="sm"
-              className="ml-auto"
-              onClick={() => navigate(`/trip/${trip.id}`)}
-            >
-              View Details
-            </Button>
           </div>
+
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); toggleFavorite(trip); }}
+            className="absolute top-2 right-2 p-1.5 rounded-full bg-black/30 hover:bg-black/50 transition-colors"
+          >
+            <Heart className={cn("w-4 h-4", isFavorited ? "fill-red-500 text-red-500" : "text-white")} />
+          </button>
+        </div>
+
+        {/* Below-image strip */}
+        <div className="px-3 py-2 flex items-center justify-between">
+          <div className="flex gap-1">
+            {(trip.tags || []).slice(0, 2).map((tag, i) => (
+              <span key={i} className="text-xs bg-accent text-accent-foreground px-2 py-0.5 rounded-full">{tag}</span>
+            ))}
+          </div>
+          {totalCost > 0 && (
+            <span className="text-xs font-bold text-primary">€{totalCost.toLocaleString()}</span>
+          )}
         </div>
       </div>
     );
@@ -558,175 +451,127 @@ const Explore = () => {
       <Header />
 
       <main className="flex-1 pt-16">
-        <section className="py-12 md:py-20 bg-gradient-to-br from-accent via-background to-muted">
-          <div className="container mx-auto px-4">
-            <div className="max-w-7xl mx-auto">
-              {/* Header */}
-              <div className="text-center mb-10">
-                <div className="inline-flex items-center gap-2 bg-primary/10 text-primary px-4 py-2 rounded-full mb-6">
-                  <Compass className="w-4 h-4" />
-                  <span className="text-sm font-medium">Discover Adventures</span>
+        <div className="container mx-auto px-4 py-5">
+
+          {/* Top bar: search + sort + filter button */}
+          <div className="flex items-center gap-2 mb-4">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <input
+                type="text"
+                placeholder="Search destinations or trips..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary text-sm"
+              />
+            </div>
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as SortOption)}
+              className="px-3 py-2 rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary text-sm shrink-0"
+            >
+              <option value="popular">Popular</option>
+              <option value="recent">Recent</option>
+              <option value="budget-low">Price ↑</option>
+              <option value="budget-high">Price ↓</option>
+            </select>
+            <Button
+              variant={showFilters ? "default" : "outline"}
+              size="sm"
+              onClick={() => setShowFilters(!showFilters)}
+              className="shrink-0 gap-1.5"
+            >
+              <Filter className="w-4 h-4" />
+              <span className="hidden sm:inline">Filters</span>
+              {hasActiveFilters && <span className="w-1.5 h-1.5 rounded-full bg-current opacity-70" />}
+            </Button>
+            {hasActiveFilters && (
+              <Button variant="ghost" size="sm" onClick={clearFilters} className="shrink-0 gap-1 text-muted-foreground">
+                <X className="w-4 h-4" />
+              </Button>
+            )}
+          </div>
+
+          {/* Collapsible filters panel */}
+          {showFilters && (
+            <div className="bg-card rounded-xl border border-border/50 p-4 mb-4">
+              <div className="flex flex-col sm:flex-row gap-4">
+                {/* Destination */}
+                <div className="sm:w-48 shrink-0">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Destination</p>
+                  <select
+                    value={selectedDestination || ""}
+                    onChange={(e) => setSelectedDestination(e.target.value || null)}
+                    className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary text-sm"
+                  >
+                    <option value="">All</option>
+                    {destinations.map(dest => (
+                      <option key={dest} value={dest}>{dest}</option>
+                    ))}
+                  </select>
                 </div>
 
-                <h1 className="text-3xl md:text-5xl font-bold text-foreground mb-4">
-                  Explore Trips
-                </h1>
-                <p className="text-lg text-muted-foreground mb-6">
-                  Get inspired by sample itineraries from around the world
-                </p>
-
-                {/* Search Bar */}
-                <div className="max-w-2xl mx-auto mb-6">
-                  <div className="relative">
-                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                {/* Budget */}
+                <div className="sm:w-52 shrink-0">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Budget (€)</p>
+                  <div className="flex gap-2 items-center">
                     <input
-                      type="text"
-                      placeholder="Search destinations or trip names..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="w-full pl-12 pr-4 py-3 min-h-[48px] rounded-xl border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary text-base"
+                      type="number"
+                      placeholder="Min"
+                      value={minBudget || ""}
+                      onChange={(e) => setMinBudget(e.target.value ? Number(e.target.value) : null)}
+                      className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary text-sm"
+                    />
+                    <span className="text-muted-foreground text-sm shrink-0">–</span>
+                    <input
+                      type="number"
+                      placeholder="Max"
+                      value={maxBudget || ""}
+                      onChange={(e) => setMaxBudget(e.target.value ? Number(e.target.value) : null)}
+                      className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary text-sm"
                     />
                   </div>
                 </div>
 
-                {/* Filter Toggle & Sort */}
-                <div className="flex flex-col sm:flex-row gap-3 justify-center items-center">
-                  <Button
-                    variant={showFilters ? "default" : "outline"}
-                    onClick={() => setShowFilters(!showFilters)}
-                    className="gap-2"
-                  >
-                    <Filter className="w-4 h-4" />
-                    Filters
-                    {hasActiveFilters && (
-                      <span className="bg-primary-foreground/20 text-xs px-2 py-0.5 rounded-full">
-                        Active
-                      </span>
-                    )}
-                  </Button>
-
-                  <select
-                    value={sortBy}
-                    onChange={(e) => setSortBy(e.target.value as SortOption)}
-                    className="px-4 py-2 min-h-[44px] rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary text-sm sm:text-base"
-                  >
-                    <option value="popular">Most Popular</option>
-                    <option value="recent">Most Recent</option>
-                    <option value="budget-low">Budget: Low to High</option>
-                    <option value="budget-high">Budget: High to Low</option>
-                  </select>
-
-                  {hasActiveFilters && (
-                    <Button variant="ghost" onClick={clearFilters} className="gap-2">
-                      <X className="w-4 h-4" />
-                      Clear Filters
-                    </Button>
-                  )}
-                </div>
-              </div>
-
-              {/* Filters Panel */}
-              {showFilters && (
-                <div className="bg-card rounded-2xl shadow-sm border border-border/50 p-6 mb-8">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    {/* Destination Filter */}
-                    <div>
-                      <label className="text-sm font-medium text-foreground mb-2 block">
-                        Destination
-                      </label>
-                      <select
-                        value={selectedDestination || ""}
-                        onChange={(e) => setSelectedDestination(e.target.value || null)}
-                        className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                {/* Interests */}
+                <div className="flex-1">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Interests</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {allTags.map(tag => (
+                      <button
+                        key={tag}
+                        onClick={() => toggleTag(tag)}
+                        className={cn(
+                          "px-3 py-1 rounded-full text-xs font-medium transition-all",
+                          selectedTags.includes(tag)
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-accent text-accent-foreground hover:bg-accent/70"
+                        )}
                       >
-                        <option value="">All Destinations</option>
-                        {destinations.map(dest => (
-                          <option key={dest} value={dest}>{dest}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {/* Budget Filter */}
-                    <div className="md:col-span-2">
-                      <label className="text-sm font-medium text-foreground mb-2 block">
-                        Budget Range (€)
-                      </label>
-                      <div className="flex gap-3">
-                        <input
-                          type="number"
-                          placeholder="Min"
-                          value={minBudget || ""}
-                          onChange={(e) => setMinBudget(e.target.value ? Number(e.target.value) : null)}
-                          className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-                        />
-                        <span className="text-muted-foreground self-center">to</span>
-                        <input
-                          type="number"
-                          placeholder="Max"
-                          value={maxBudget || ""}
-                          onChange={(e) => setMaxBudget(e.target.value ? Number(e.target.value) : null)}
-                          className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Tags Filter */}
-                    <div className="md:col-span-3">
-                      <label className="text-sm font-medium text-foreground mb-2 block">
-                        Interests
-                      </label>
-                      <div className="flex flex-wrap gap-2">
-                        {allTags.map(tag => (
-                          <button
-                            key={tag}
-                            onClick={() => toggleTag(tag)}
-                            className={cn(
-                              "px-3 py-1.5 rounded-full text-sm font-medium transition-all",
-                              selectedTags.includes(tag)
-                                ? "bg-primary text-primary-foreground shadow-md"
-                                : "bg-accent text-accent-foreground hover:bg-accent/70"
-                            )}
-                          >
-                            {tag}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
+                        {tag}
+                      </button>
+                    ))}
                   </div>
                 </div>
-              )}
-
-              {/* Results Count */}
-              <div className="text-center mb-6">
-                <p className="text-muted-foreground">
-                  Showing {filteredTrips.length} of {PLACEHOLDER_TRIPS.length} trips
-                </p>
               </div>
-
-              {/* Trips Grid */}
-              {filteredTrips.length > 0 ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {filteredTrips.map(trip => <TripCard key={trip.id} trip={trip} />)}
-                </div>
-              ) : (
-                <div className="bg-card rounded-2xl shadow-sm border border-border/50 p-12 text-center">
-                  <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-6">
-                    <Compass className="w-8 h-8 text-muted-foreground" />
-                  </div>
-                  <h3 className="text-xl font-bold text-foreground mb-2">
-                    No trips found
-                  </h3>
-                  <p className="text-muted-foreground mb-6">
-                    Try adjusting your filters or search terms
-                  </p>
-                  <Button onClick={clearFilters} variant="outline">
-                    Clear All Filters
-                  </Button>
-                </div>
-              )}
             </div>
-          </div>
-        </section>
+          )}
+
+          {/* Trip grid — full width */}
+          {filteredTrips.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+              {filteredTrips.map(trip => <TripCard key={trip.id} trip={trip} />)}
+            </div>
+          ) : (
+            <div className="bg-card rounded-xl border border-border/50 p-12 text-center">
+              <Compass className="w-8 h-8 text-muted-foreground mx-auto mb-3" />
+              <h3 className="font-semibold text-foreground mb-1">No trips found</h3>
+              <p className="text-sm text-muted-foreground mb-4">Try adjusting your filters</p>
+              <Button onClick={clearFilters} variant="outline" size="sm">Clear Filters</Button>
+            </div>
+          )}
+
+        </div>
       </main>
 
       <Footer />
