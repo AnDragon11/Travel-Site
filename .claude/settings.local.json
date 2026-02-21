@@ -13,9 +13,14 @@
       "Bash(git checkout:*)",
       "Bash(npm run dev:*)",
       "Bash(python3:*)",
+<<<<<<< HEAD
       "Bash(git merge:*)",
       "Bash(~/.bun/bin/bun run build:*)",
       "Bash(supabase:*)"
+=======
+      "Bash(git branch:*)",
+      "Bash(git push:*)"
+>>>>>>> Dev
     ]
   }
 }
