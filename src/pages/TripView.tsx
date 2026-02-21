@@ -9,15 +9,12 @@ import {
   Users,
   Clock,
   Pencil,
-  Heart,
-  Star,
   DollarSign,
   Save,
   Sparkles
 } from "lucide-react";
 import { SavedTrip } from "@/lib/tripTypes";
 import { loadTrips, saveTrip } from "@/services/storageService";
-import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
 // Import placeholder trips from Explore page
@@ -31,8 +28,6 @@ const PLACEHOLDER_TRIPS: SavedTrip[] = [
     title: "Romantic Getaway in Paris",
     destination: "Paris, France",
     travelers: 2,
-    rating: 5,
-    review: "An absolutely magical experience! The Eiffel Tower at sunset was breathtaking, and the cozy cafés along the Seine made every moment special.",
     tags: ["Romance", "Culture", "Fine Dining"],
     isFavorite: true,
     days: [
@@ -101,8 +96,6 @@ const PLACEHOLDER_TRIPS: SavedTrip[] = [
     title: "Adventure in Iceland",
     destination: "Reykjavik, Iceland",
     travelers: 4,
-    rating: 5,
-    review: "The Northern Lights were incredible! Hiking on glaciers and soaking in the Blue Lagoon - pure adventure.",
     tags: ["Adventure", "Nature", "Photography"],
     days: [
       {
@@ -146,8 +139,6 @@ const PLACEHOLDER_TRIPS: SavedTrip[] = [
     title: "Tokyo Food & Culture Tour",
     destination: "Tokyo, Japan",
     travelers: 3,
-    rating: 5,
-    review: "Sushi at Tsukiji Market was life-changing. The blend of ancient temples and futuristic tech is mind-blowing!",
     tags: ["Food", "Culture", "Shopping"],
     days: [
       {
@@ -210,8 +201,6 @@ const PLACEHOLDER_TRIPS: SavedTrip[] = [
     title: "Beach Relaxation in Bali",
     destination: "Bali, Indonesia",
     travelers: 2,
-    rating: 4,
-    review: "Perfect for unwinding. The rice terraces are stunning, and the beach clubs offer amazing sunset views.",
     tags: ["Beach", "Relaxation", "Yoga"],
     days: [
       {
@@ -255,8 +244,6 @@ const PLACEHOLDER_TRIPS: SavedTrip[] = [
     title: "New York City Explorer",
     destination: "New York, USA",
     travelers: 1,
-    rating: 5,
-    review: "The energy of NYC is unmatched! Broadway shows, Central Park, and the best pizza on every corner.",
     tags: ["Urban", "Entertainment", "Food"],
     isFavorite: true,
     days: [
@@ -426,31 +413,6 @@ const TripView = () => {
                         </span>
                       )}
                     </div>
-
-                    {/* Rating */}
-                    {trip.rating && (
-                      <div className="flex items-center gap-1 mb-3">
-                        {[...Array(5)].map((_, i) => (
-                          <Star
-                            key={i}
-                            className={cn(
-                              "w-5 h-5",
-                              i < trip.rating! ? "fill-yellow-400 text-yellow-400" : "text-gray-300"
-                            )}
-                          />
-                        ))}
-                        <span className="text-sm text-muted-foreground ml-2">
-                          {trip.rating}/5
-                        </span>
-                      </div>
-                    )}
-
-                    {/* Review */}
-                    {trip.review && (
-                      <p className="text-muted-foreground italic mb-4">
-                        "{trip.review}"
-                      </p>
-                    )}
 
                     {/* Tags */}
                     {trip.tags && trip.tags.length > 0 && (

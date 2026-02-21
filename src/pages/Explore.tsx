@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { MapPin, Calendar, Users, Heart, Compass, Filter, Search, X } from "lucide-react";
 import { SavedTrip } from "@/lib/tripTypes";
 import { cn } from "@/lib/utils";
-import { loadTrips, saveTrip } from "@/services/storageService";
+import { loadTrips, saveTrip, deleteTrip } from "@/services/storageService";
 import { toast } from "sonner";
 
 // Placeholder trips marked as samples
@@ -19,10 +19,7 @@ const PLACEHOLDER_TRIPS: SavedTrip[] = [
     title: "Romantic Getaway in Paris",
     destination: "Paris, France",
     travelers: 2,
-    rating: 5,
-    review: "An absolutely magical experience! The Eiffel Tower at sunset was breathtaking, and the cozy cafés along the Seine made every moment special.",
     tags: ["Romance", "Culture", "Fine Dining"],
-    isFavorite: true,
     days: [
       {
         date: "2025-03-15",
@@ -89,8 +86,6 @@ const PLACEHOLDER_TRIPS: SavedTrip[] = [
     title: "Adventure in Iceland",
     destination: "Reykjavik, Iceland",
     travelers: 4,
-    rating: 5,
-    review: "The Northern Lights were incredible! Hiking on glaciers and soaking in the Blue Lagoon - pure adventure.",
     tags: ["Adventure", "Nature", "Photography"],
     days: [
       {
@@ -134,8 +129,6 @@ const PLACEHOLDER_TRIPS: SavedTrip[] = [
     title: "Tokyo Food & Culture Tour",
     destination: "Tokyo, Japan",
     travelers: 3,
-    rating: 5,
-    review: "Sushi at Tsukiji Market was life-changing. The blend of ancient temples and futuristic tech is mind-blowing!",
     tags: ["Food", "Culture", "Shopping"],
     days: [
       {
@@ -192,8 +185,6 @@ const PLACEHOLDER_TRIPS: SavedTrip[] = [
     title: "Beach Relaxation in Bali",
     destination: "Bali, Indonesia",
     travelers: 2,
-    rating: 4,
-    review: "Perfect for unwinding. The rice terraces are stunning, and the beach clubs offer amazing sunset views.",
     tags: ["Beach", "Relaxation", "Yoga"],
     days: [
       {
@@ -237,10 +228,7 @@ const PLACEHOLDER_TRIPS: SavedTrip[] = [
     title: "New York City Explorer",
     destination: "New York, USA",
     travelers: 1,
-    rating: 5,
-    review: "The energy of NYC is unmatched! Broadway shows, Central Park, and the best pizza on every corner.",
     tags: ["Urban", "Entertainment", "Food"],
-    isFavorite: true,
     days: [
       {
         date: "2025-05-12",
@@ -316,26 +304,26 @@ const Explore = () => {
   };
 
   const toggleFavorite = async (trip: SavedTrip) => {
-    // For sample trips, find the saved copy by title (their ids aren't valid UUIDs)
-    const existingTrip = trip.id.startsWith("sample-")
-      ? savedTrips.find(t => t.title === trip.title)
-      : savedTrips.find(t => t.id === trip.id);
+    const isFavorited = isTripFavorited(trip);
 
-    if (existingTrip) {
-      const updated = { ...existingTrip, isFavorite: !existingTrip.isFavorite };
-      // Optimistic update — instant UI, no re-fetch
-      setSavedTrips(prev => prev.map(t => t.id === existingTrip.id ? updated : t));
-      toast.success(updated.isFavorite ? "Added to favorites" : "Removed from favorites");
-      saveTrip(updated).catch((e: unknown) => {
-        // Roll back on failure
-        setSavedTrips(prev => prev.map(t => t.id === existingTrip.id ? existingTrip : t));
-        toast.error(e instanceof Error ? e.message : "Failed to save");
+    if (isFavorited) {
+      // Remove from bucket list — find the saved copy and delete it
+      const existingTrip = trip.id.startsWith("sample-")
+        ? savedTrips.find(t => t.title === trip.title && t.isFavorite)
+        : savedTrips.find(t => t.id === trip.id && t.isFavorite);
+      if (!existingTrip) return;
+
+      setSavedTrips(prev => prev.filter(t => t.id !== existingTrip.id));
+      toast.success("Removed from bucket list");
+      deleteTrip(existingTrip.id).catch((e: unknown) => {
+        setSavedTrips(prev => [existingTrip, ...prev]);
+        toast.error(e instanceof Error ? e.message : "Failed to remove");
       });
     } else {
-      // New trip — generate a proper UUID so Supabase accepts it
-      const newTrip = { ...trip, id: crypto.randomUUID(), isFavorite: true };
+      // Save to bucket list — generate a proper UUID so Supabase accepts it
+      const newTrip: SavedTrip = { ...trip, id: crypto.randomUUID(), isFavorite: true, isBucketList: true };
       setSavedTrips(prev => [...prev, newTrip]);
-      toast.success("Trip saved to favorites!");
+      toast.success("Saved to bucket list!");
       saveTrip(newTrip).catch((e: unknown) => {
         setSavedTrips(prev => prev.filter(t => t.id !== newTrip.id));
         toast.error(e instanceof Error ? e.message : "Failed to save");
@@ -366,7 +354,7 @@ const Explore = () => {
   }).sort((a, b) => {
     switch (sortBy) {
       case 'recent': return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-      case 'popular': return (b.rating || 0) - (a.rating || 0);
+      case 'popular': return b.travelers - a.travelers;
       case 'budget-low': return calculateTripCost(a) - calculateTripCost(b);
       case 'budget-high': return calculateTripCost(b) - calculateTripCost(a);
       default: return 0;

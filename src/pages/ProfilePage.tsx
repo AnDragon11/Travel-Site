@@ -13,7 +13,7 @@ import { SavedTrip } from "@/lib/tripTypes";
 import { toast } from "sonner";
 import {
   Globe, Lock, Grid3X3,
-  Star, MapPin, Bookmark, Trash2, Eye,
+  MapPin, Bookmark, Trash2, Eye,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────
@@ -33,15 +33,6 @@ const GuestAvatar = ({ className }: { className?: string }) => (
   </svg>
 );
 
-// ─── Stars display ────────────────────────────────────────────────────
-const Stars = ({ rating }: { rating?: number }) => (
-  <div className="flex gap-0.5">
-    {[1,2,3,4,5].map(i => (
-      <Star key={i} className={`w-3 h-3 ${(rating ?? 0) >= i ? "fill-yellow-400 text-yellow-400" : "text-muted-foreground/30"}`} />
-    ))}
-  </div>
-);
-
 // ─── Trip Card (photo-first, diary/bucket list style) ─────────────────
 const TripCard = ({
   trip, isOwn, onTogglePublic, onDelete, onBucketList,
@@ -53,7 +44,7 @@ const TripCard = ({
   onBucketList?: (trip: SavedTrip) => void;
 }) => {
   const navigate = useNavigate();
-  const coverPhoto = trip.photos?.[0];
+  const coverPhoto = trip.photos?.[0] ?? trip.days?.[0]?.activities?.[0]?.image;
   const startDate = trip.days?.[0]?.date
     ? new Date(trip.days[0].date).toLocaleDateString(undefined, { month: "short", year: "numeric" })
     : null;
@@ -78,10 +69,7 @@ const TripCard = ({
       {/* Bottom info */}
       <div className="absolute bottom-0 left-0 right-0 p-3">
         <p className="text-white text-sm font-semibold leading-tight truncate">{trip.destination}</p>
-        <div className="flex items-center justify-between mt-0.5">
-          {startDate && <p className="text-white/70 text-xs">{startDate}</p>}
-          <Stars rating={trip.rating} />
-        </div>
+        {startDate && <p className="text-white/70 text-xs mt-0.5">{startDate}</p>}
       </div>
 
       {/* Top-right actions */}

@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
-import { MapPin, Calendar, Users, Trash2, Pencil, Sparkles, Plus, Briefcase, Star, Heart, Clock, Archive, Map } from "lucide-react";
+import { MapPin, Calendar, Users, Trash2, Pencil, Sparkles, Plus, Briefcase, Heart, Clock, Archive, Map } from "lucide-react";
 import { loadTrips, deleteTrip, saveTrip } from "@/services/storageService";
 import { SavedTrip } from "@/lib/tripTypes";
 import { toast } from "sonner";
@@ -107,31 +107,6 @@ const MyTrips = () => {
                 )}
               </h3>
             </div>
-
-            {/* Rating */}
-            {trip.rating && (
-              <div className="flex items-center gap-1">
-                {[...Array(5)].map((_, i) => (
-                  <Star
-                    key={i}
-                    className={cn(
-                      "w-4 h-4",
-                      i < trip.rating! ? "fill-yellow-400 text-yellow-400" : "text-gray-300"
-                    )}
-                  />
-                ))}
-                <span className="text-sm text-muted-foreground ml-1">
-                  {trip.rating}/5
-                </span>
-              </div>
-            )}
-
-            {/* Review */}
-            {trip.review && (
-              <p className="text-sm text-muted-foreground italic line-clamp-2">
-                "{trip.review}"
-              </p>
-            )}
 
             {/* Details */}
             <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
