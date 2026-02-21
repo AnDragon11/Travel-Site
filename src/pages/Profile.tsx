@@ -13,6 +13,7 @@ import { ArrowLeft, CheckCircle, XCircle, Loader } from "lucide-react";
 const HANDLE_RE = /^[a-z0-9_]+$/i;
 
 const Profile = () => {
+  // ProtectedRoute guarantees user is non-null when this component renders
   const { user } = useAuth();
   const navigate = useNavigate();
 
@@ -37,10 +38,6 @@ const Profile = () => {
   const [phone, setPhone] = useState(user?.phone ?? "");
   const [savingPhone, setSavingPhone] = useState(false);
 
-  useEffect(() => {
-    if (!user) navigate("/login");
-  }, [user, navigate]);
-
   // Debounced handle availability check (skip if unchanged)
   useEffect(() => {
     const normalized = handle.toLowerCase().trim();
@@ -58,6 +55,15 @@ const Profile = () => {
     }, 400);
     return () => clearTimeout(timer);
   }, [handle, originalHandle]);
+
+  // Sync form fields once auth resolves (useState initializes before user is available)
+  useEffect(() => {
+    if (user) {
+      setDisplayName(user.user_metadata?.display_name ?? "");
+      setHandle(user.user_metadata?.handle ?? "");
+      setPhone(user.phone ?? "");
+    }
+  }, [user]);
 
   if (!user) return null;
 
@@ -77,8 +83,9 @@ const Profile = () => {
   const handleSaveInfo = async (e: React.FormEvent) => {
     e.preventDefault();
     const normalizedHandle = handle.toLowerCase().trim();
-    if (normalizedHandle.length < 3) { toast.error("Handle must be at least 3 characters"); return; }
-    if (!HANDLE_RE.test(normalizedHandle)) { toast.error("Handle can only contain letters, numbers and underscores"); return; }
+    // Only validate handle if it's being set/changed (allow empty = no handle)
+    if (normalizedHandle.length > 0 && normalizedHandle.length < 3) { toast.error("Handle must be at least 3 characters"); return; }
+    if (normalizedHandle.length > 0 && !HANDLE_RE.test(normalizedHandle)) { toast.error("Handle can only contain letters, numbers and underscores"); return; }
     if (handleAvailable === false) { toast.error("That handle is already taken"); return; }
 
     setSavingInfo(true);

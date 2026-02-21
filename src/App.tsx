@@ -19,6 +19,7 @@ import TripView from "./pages/TripView";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 
+import ProtectedRoute from "./components/ProtectedRoute";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -38,8 +39,8 @@ const App = () => (
                 <Route path="/explore" element={<Explore />} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/signup" element={<Signup />} />
-                <Route path="/profile" element={<ProfilePage />} />
-                <Route path="/profile-settings" element={<ProfileSettings />} />
+                <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
+                <Route path="/profile-settings" element={<ProtectedRoute><ProfileSettings /></ProtectedRoute>} />
                 <Route path="/user/:handle" element={<ProfilePage />} />
                 <Route path="/my-trips" element={<Navigate to="/profile" replace />} />
                 <Route path="/itinerary" element={<Itinerary />} />

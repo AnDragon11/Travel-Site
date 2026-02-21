@@ -14,6 +14,39 @@ export type Database = {
   }
   public: {
     Tables: {
+      itinerary_requests: {
+        Row: {
+          id: string
+          user_id: string | null
+          status: 'pending' | 'processing' | 'completed' | 'error'
+          form_data: Json
+          result: Json | null
+          error_message: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id?: string | null
+          status?: 'pending' | 'processing' | 'completed' | 'error'
+          form_data: Json
+          result?: Json | null
+          error_message?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string | null
+          status?: 'pending' | 'processing' | 'completed' | 'error'
+          form_data?: Json
+          result?: Json | null
+          error_message?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           id: string

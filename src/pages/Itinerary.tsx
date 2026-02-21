@@ -365,21 +365,27 @@ const Itinerary = () => {
 
   const handleSaveTrip = async () => {
     if (!itinerary) return;
-
-    const savedTrip = convertItineraryToTrip(itinerary);
-    await saveTrip(savedTrip);
-    setIsSaved(true);
-    clearTrip(); // Clear temp storage after permanent save
-    toast.success("Trip saved permanently!");
+    try {
+      const savedTrip = convertItineraryToTrip(itinerary);
+      await saveTrip(savedTrip);
+      setIsSaved(true);
+      clearTrip();
+      toast.success("Trip saved permanently!");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to save trip");
+    }
   };
 
   const handleCustomize = async () => {
     if (!itinerary) return;
-
-    const savedTrip = convertItineraryToTrip(itinerary);
-    await saveTrip(savedTrip);
-    navigate(`/builder/${savedTrip.id}`);
-    toast.success("Opening trip in editor...");
+    try {
+      const savedTrip = convertItineraryToTrip(itinerary);
+      await saveTrip(savedTrip);
+      navigate(`/builder/${savedTrip.id}`);
+      toast.success("Opening trip in editor...");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to save trip");
+    }
   };
 
   if (!itinerary) {

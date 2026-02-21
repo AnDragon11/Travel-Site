@@ -1,6 +1,5 @@
 import { TripFormData, TripItinerary, DayItinerary, Activity } from "@/context/TripContext";
-// Using direct fetch with custom timeout instead of supabase.functions.invoke
-// to prevent the default short client timeout from triggering premature fallback
+import { supabase } from "@/integrations/supabase/client";
 
 /**
  * === Expected n8n Webhook JSON Response Schema ===
@@ -163,7 +162,7 @@ const groupActivitiesIntoDays = (activities: Activity[], startDate: Date, numDay
 };
 
 // Validate and coerce webhook response into TripItinerary shape
-const parseWebhookResponse = (data: any, formData: TripFormData): TripItinerary => {
+export const parseWebhookResponse = (data: any, formData: TripFormData): TripItinerary => {
   // If response is a flat array of activity-like objects, wrap in { data: [...] }
   if (Array.isArray(data) && data.length > 0 && data[0].time && data[0].name) {
     console.log("Response is a flat activity array, wrapping for processing");
@@ -342,14 +341,8 @@ const generatePlaceholder = (formData: TripFormData): TripItinerary => {
   return ensureTransportBookends(placeholder, formData);
 };
 
-/**
- * Submit trip request directly to n8n webhook.
- * Waits up to 120s for a real response; falls back to placeholder on timeout/error.
- */
-export const submitTripRequest = async (formData: TripFormData): Promise<TripItinerary> => {
-  console.log("=== Trip Planning Request ===");
-  console.log("Form Data:", JSON.stringify(formData, null, 2));
-
+/** Direct n8n call — used for guests (no Supabase account). */
+const submitDirectToN8n = async (formData: TripFormData): Promise<TripItinerary> => {
   const webhookUrl = import.meta.env.VITE_N8N_WEBHOOK_URL;
   if (!webhookUrl) {
     console.warn("VITE_N8N_WEBHOOK_URL not set, using placeholder");
@@ -388,15 +381,110 @@ export const submitTripRequest = async (formData: TripFormData): Promise<TripIti
         console.warn("Webhook timed out (from response), using placeholder");
         return generatePlaceholder(formData);
       }
-      console.error("Webhook returned error:", data.error);
       throw new Error(data.error);
     }
 
-    console.log("Webhook response received, parsing...");
     return parseWebhookResponse(data, formData);
   } catch (err) {
-    // Re-throw so the UI can display the error to the user
     if (err instanceof Error) throw err;
     throw new Error("Failed to generate itinerary");
   }
+};
+
+/**
+ * Authenticated flow: insert a request row into Supabase, then wait for n8n
+ * to write the result back via a database webhook → Realtime subscription.
+ */
+const submitViaSupabase = (formData: TripFormData, userId: string): Promise<TripItinerary> => {
+  return new Promise((resolve, reject) => {
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+
+    const cleanup = () => {
+      if (channel) {
+        supabase.removeChannel(channel);
+        channel = null;
+      }
+    };
+
+    const timeoutId = setTimeout(() => {
+      cleanup();
+      reject(new Error("Request timed out after 120 seconds"));
+    }, 120000);
+
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from("itinerary_requests")
+          .insert({ user_id: userId, form_data: formData as any, status: "pending" })
+          .select("id")
+          .single();
+
+        if (error || !data) {
+          clearTimeout(timeoutId);
+          reject(new Error(error?.message || "Failed to create itinerary request"));
+          return;
+        }
+
+        const requestId = data.id;
+        console.log("Itinerary request created:", requestId);
+
+        channel = supabase
+          .channel(`itinerary-${requestId}`)
+          .on(
+            "postgres_changes",
+            {
+              event: "UPDATE",
+              schema: "public",
+              table: "itinerary_requests",
+              filter: `id=eq.${requestId}`,
+            },
+            (payload) => {
+              const record = payload.new as {
+                status: string;
+                result: any;
+                error_message: string | null;
+              };
+
+              if (record.status === "completed" && record.result) {
+                clearTimeout(timeoutId);
+                cleanup();
+                try {
+                  resolve(parseWebhookResponse(record.result, formData));
+                } catch (err) {
+                  reject(err instanceof Error ? err : new Error("Failed to parse itinerary"));
+                }
+              } else if (record.status === "error") {
+                clearTimeout(timeoutId);
+                cleanup();
+                reject(new Error(record.error_message || "Failed to generate itinerary"));
+              }
+            }
+          )
+          .subscribe();
+      } catch (err) {
+        clearTimeout(timeoutId);
+        cleanup();
+        reject(err instanceof Error ? err : new Error("Failed to submit itinerary request"));
+      }
+    })();
+  });
+};
+
+/**
+ * Main entry point called by Planner.tsx.
+ * Routes to Supabase flow for authenticated users, direct n8n call for guests.
+ */
+export const submitTripRequest = async (formData: TripFormData): Promise<TripItinerary> => {
+  console.log("=== Trip Planning Request ===");
+  console.log("Form Data:", JSON.stringify(formData, null, 2));
+
+  const { data: { session } } = await supabase.auth.getSession();
+
+  if (session?.user) {
+    console.log("Authenticated — routing via Supabase");
+    return submitViaSupabase(formData, session.user.id);
+  }
+
+  console.log("Guest — routing directly to n8n");
+  return submitDirectToN8n(formData);
 };

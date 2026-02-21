@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
 import L from "leaflet";
@@ -170,6 +170,11 @@ const ProfilePage = () => {
   // Is this the viewer's own profile?
   const isOwn = !handle;
 
+  // Use the user ID (primitive) in effect deps to avoid re-running on every
+  // Supabase onAuthStateChange event (TOKEN_REFRESHED, INITIAL_SESSION, etc.),
+  // which creates a new User object reference even when the data is identical.
+  const userId = user?.id ?? null;
+
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [diaryTrips, setDiaryTrips] = useState<SavedTrip[]>([]);
   const [bucketList, setBucketList] = useState<SavedTrip[]>([]);
@@ -246,7 +251,7 @@ const ProfilePage = () => {
     };
     load();
     return () => { cancelled = true; };
-  }, [handle, user, isOwn, navigate, authLoading]);
+  }, [handle, userId, isOwn, navigate, authLoading]);
 
   // ── Geocode destinations for map ──────────────────────────────────
   useEffect(() => {
@@ -291,7 +296,13 @@ const ProfilePage = () => {
   }, [user]);
 
   // ── Stats ─────────────────────────────────────────────────────────
-  const countries = new Set(diaryTrips.map(t => t.destination.split(",").pop()?.trim())).size;
+  // Use optional chaining to guard against null/undefined destinations
+  const countries = new Set(
+    diaryTrips.map(t => t.destination?.split(",").pop()?.trim()).filter(Boolean)
+  ).size;
+
+  // Diagnostic logging — remove once blank-page issue is resolved
+  console.log("[ProfilePage]", { loading, loadError, hasProfile: !!profile, userId, tripCount: diaryTrips.length });
 
   if (loading) {
     return (
@@ -547,4 +558,50 @@ const ProfilePage = () => {
   );
 };
 
-export default ProfilePage;
+// ─── Error boundary to catch render crashes (shows error instead of blank) ──
+class ProfileErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { error: Error | null }
+> {
+  state: { error: Error | null } = { error: null };
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    console.error("[ProfilePage crash]", error, info.componentStack);
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="min-h-screen flex flex-col">
+          <Header />
+          <main className="flex-1 pt-16 flex flex-col items-center justify-center gap-3 px-4">
+            <p className="text-base font-semibold text-destructive">Something went wrong on the profile page</p>
+            <p className="text-sm text-muted-foreground font-mono bg-muted px-3 py-2 rounded max-w-lg break-all">
+              {this.state.error.message}
+            </p>
+            <button
+              onClick={() => window.location.reload()}
+              className="text-sm text-primary underline mt-2"
+            >
+              Reload page
+            </button>
+          </main>
+          <Footer />
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+export default function ProfilePageWithBoundary() {
+  return (
+    <ProfileErrorBoundary>
+      <ProfilePage />
+    </ProfileErrorBoundary>
+  );
+}
