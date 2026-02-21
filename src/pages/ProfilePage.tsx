@@ -7,7 +7,7 @@ import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import {
   loadTrips, loadBucketList, loadPublicTripsForUser,
-  copyToBucketList, setTripPublic, deleteTrip,
+  copyToBucketList, setTripPublic, deleteTrip, saveTrip,
 } from "@/services/storageService";
 import { SavedTrip } from "@/lib/tripTypes";
 import { toast } from "sonner";
@@ -35,11 +35,12 @@ const GuestAvatar = ({ className }: { className?: string }) => (
 
 // ─── Trip Card (photo-first, diary/bucket list style) ─────────────────
 const TripCard = ({
-  trip, isOwn, onTogglePublic, onDelete, onBucketList,
+  trip, isOwn, onTogglePublic, onToggleBucketList, onDelete, onBucketList,
 }: {
   trip: SavedTrip;
   isOwn: boolean;
   onTogglePublic?: (id: string, val: boolean) => void;
+  onToggleBucketList?: (id: string, val: boolean) => void;
   onDelete?: (id: string) => void;
   onBucketList?: (trip: SavedTrip) => void;
 }) => {
@@ -79,9 +80,18 @@ const TripCard = ({
           <button
             onClick={() => onTogglePublic(trip.id, !(trip.isPublic ?? true))}
             className="w-7 h-7 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center text-white hover:bg-black/60 transition-colors"
-            title={trip.isPublic ? "Make private" : "Make public"}
+            title={trip.isPublic !== false ? "Make private" : "Make public"}
           >
             {trip.isPublic !== false ? <Eye className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
+          </button>
+        )}
+        {isOwn && onToggleBucketList && (
+          <button
+            onClick={() => onToggleBucketList(trip.id, !trip.isBucketList)}
+            className="w-7 h-7 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center text-white hover:bg-primary/80 transition-colors"
+            title={trip.isBucketList ? "Move to Travel Diary" : "Move to Bucket List"}
+          >
+            <Bookmark className={`w-3.5 h-3.5 ${trip.isBucketList ? "fill-white" : ""}`} />
           </button>
         )}
         {isOwn && onDelete && (
@@ -221,8 +231,27 @@ const ProfilePage = () => {
     try {
       await setTripPublic(id, val);
       setDiaryTrips(ts => ts.map(t => t.id === id ? { ...t, isPublic: val } : t));
+      setBucketList(ts => ts.map(t => t.id === id ? { ...t, isPublic: val } : t));
     } catch { toast.error("Failed to update visibility"); }
   }, []);
+
+  const handleToggleBucketList = useCallback(async (id: string, toBucket: boolean) => {
+    try {
+      const allTrips = [...diaryTrips, ...bucketList];
+      const trip = allTrips.find(t => t.id === id);
+      if (!trip) return;
+      const updated = { ...trip, isBucketList: toBucket };
+      await saveTrip(updated);
+      if (toBucket) {
+        setDiaryTrips(ts => ts.filter(t => t.id !== id));
+        setBucketList(ts => [updated, ...ts]);
+      } else {
+        setBucketList(ts => ts.filter(t => t.id !== id));
+        setDiaryTrips(ts => [updated, ...ts]);
+      }
+      toast.success(toBucket ? "Moved to Bucket List" : "Moved to Travel Diary");
+    } catch { toast.error("Failed to move trip"); }
+  }, [diaryTrips, bucketList]);
 
   const handleDelete = useCallback(async (id: string) => {
     try {
@@ -435,6 +464,7 @@ const ProfilePage = () => {
                       trip={trip}
                       isOwn={isOwn}
                       onTogglePublic={isOwn && !isGuest ? handleTogglePublic : undefined}
+                      onToggleBucketList={isOwn ? handleToggleBucketList : undefined}
                       onDelete={isOwn ? handleDelete : undefined}
                       onBucketList={!isOwn ? handleBucketList : undefined}
                     />
@@ -473,6 +503,8 @@ const ProfilePage = () => {
                       key={trip.id}
                       trip={trip}
                       isOwn={true}
+                      onTogglePublic={handleTogglePublic}
+                      onToggleBucketList={handleToggleBucketList}
                       onDelete={handleDelete}
                     />
                   ))}
