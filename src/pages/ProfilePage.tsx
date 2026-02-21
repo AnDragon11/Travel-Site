@@ -1,8 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
-import L from "leaflet";
-import "leaflet/dist/leaflet.css";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
@@ -15,17 +12,9 @@ import {
 import { SavedTrip } from "@/lib/tripTypes";
 import { toast } from "sonner";
 import {
-  Globe, Heart, Lock, Unlock, Map, Grid3X3,
+  Globe, Lock, Grid3X3,
   Star, MapPin, Bookmark, Trash2, Eye,
 } from "lucide-react";
-
-// ─── Fix Leaflet default marker icons ───────────────────────────────
-delete (L.Icon.Default.prototype as unknown as Record<string, unknown>)._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png",
-  iconUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png",
-  shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png",
-});
 
 // ─── Types ────────────────────────────────────────────────────────────
 interface ProfileData {
@@ -34,29 +23,6 @@ interface ProfileData {
   handle: string | null;
   avatar_url: string | null;
   bio: string | null;
-}
-
-interface GeoCoord { lat: number; lng: number; }
-
-// ─── Geocode a destination string → lat/lng via Nominatim ────────────
-const geocodeCache: Record<string, GeoCoord | null> = {};
-
-async function geocode(destination: string): Promise<GeoCoord | null> {
-  if (destination in geocodeCache) return geocodeCache[destination];
-  try {
-    const res = await fetch(
-      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(destination)}&format=json&limit=1`,
-      { headers: { "Accept-Language": "en" } }
-    );
-    const data = await res.json();
-    if (data?.[0]) {
-      const coord = { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
-      geocodeCache[destination] = coord;
-      return coord;
-    }
-  } catch { /* silent */ }
-  geocodeCache[destination] = null;
-  return null;
 }
 
 // ─── Guest avatar SVG ─────────────────────────────────────────────────
@@ -181,8 +147,6 @@ const ProfilePage = () => {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [tab, setTab] = useState<"diary" | "bucket">("diary");
-  const [showMap, setShowMap] = useState(true);
-  const [markers, setMarkers] = useState<{ coord: GeoCoord; trip: SavedTrip }[]>([]);
 
   // ── Load profile + trips ──────────────────────────────────────────
   useEffect(() => {
@@ -253,22 +217,6 @@ const ProfilePage = () => {
     return () => { cancelled = true; };
   }, [handle, userId, isOwn, navigate, authLoading]);
 
-  // ── Geocode destinations for map ──────────────────────────────────
-  useEffect(() => {
-    if (diaryTrips.length === 0) return;
-    const unique = [...new Set(diaryTrips.map(t => t.destination))];
-    Promise.all(
-      unique.map(async dest => {
-        const coord = await geocode(dest);
-        if (!coord) return null;
-        const trip = diaryTrips.find(t => t.destination === dest)!;
-        return { coord, trip };
-      })
-    ).then(results => {
-      setMarkers(results.filter(Boolean) as { coord: GeoCoord; trip: SavedTrip }[]);
-    });
-  }, [diaryTrips]);
-
   // ── Handlers ─────────────────────────────────────────────────────
   const handleTogglePublic = useCallback(async (id: string, val: boolean) => {
     try {
@@ -300,9 +248,6 @@ const ProfilePage = () => {
   const countries = new Set(
     diaryTrips.map(t => t.destination?.split(",").pop()?.trim()).filter(Boolean)
   ).size;
-
-  // Diagnostic logging — remove once blank-page issue is resolved
-  console.log("[ProfilePage]", { loading, loadError, hasProfile: !!profile, userId, tripCount: diaryTrips.length });
 
   if (loading) {
     return (
@@ -439,55 +384,12 @@ const ProfilePage = () => {
 
           {tab === "diary" && (
             <div className="space-y-6">
-              {/* Map toggle */}
+              {/* Trip count */}
               {diaryTrips.length > 0 && (
-                <div className="flex items-center justify-between">
-                  <h2 className="text-sm font-medium text-muted-foreground">
-                    {diaryTrips.length} {diaryTrips.length === 1 ? "trip" : "trips"}
-                    {!isOwn && " · public"}
-                  </h2>
-                  <button
-                    onClick={() => setShowMap(v => !v)}
-                    className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-colors ${
-                      showMap ? "bg-primary/10 border-primary/30 text-primary" : "border-border text-muted-foreground hover:bg-accent"
-                    }`}
-                  >
-                    <Map className="w-3.5 h-3.5" />
-                    {showMap ? "Hide map" : "Show map"}
-                  </button>
-                </div>
-              )}
-
-              {/* Leaflet Map */}
-              {showMap && diaryTrips.length > 0 && (
-                <div className="rounded-2xl overflow-hidden border border-border/50 h-64 md:h-80">
-                  <MapContainer
-                    center={markers[0]?.coord ?? [20, 0]}
-                    zoom={markers.length > 0 ? 2 : 1}
-                    style={{ height: "100%", width: "100%" }}
-                    scrollWheelZoom={false}
-                  >
-                    <TileLayer
-                      attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-                      url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                    />
-                    {markers.map(({ coord, trip }, i) => (
-                      <Marker key={i} position={[coord.lat, coord.lng]}>
-                        <Popup>
-                          <div className="text-sm">
-                            <p className="font-semibold">{trip.destination}</p>
-                            <p className="text-gray-500">{trip.title}</p>
-                            {trip.days?.[0]?.date && (
-                              <p className="text-gray-400 text-xs mt-1">
-                                {new Date(trip.days[0].date).toLocaleDateString(undefined, { month: "short", year: "numeric" })}
-                              </p>
-                            )}
-                          </div>
-                        </Popup>
-                      </Marker>
-                    ))}
-                  </MapContainer>
-                </div>
+                <h2 className="text-sm font-medium text-muted-foreground">
+                  {diaryTrips.length} {diaryTrips.length === 1 ? "trip" : "trips"}
+                  {!isOwn && " · public"}
+                </h2>
               )}
 
               {/* Trip grid */}
