@@ -39,7 +39,7 @@ const App = () => (
                 <Route path="/explore" element={<Explore />} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/signup" element={<Signup />} />
-                <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
+                <Route path="/profile" element={<ProfilePage />} />
                 <Route path="/profile-settings" element={<ProtectedRoute><ProfileSettings /></ProtectedRoute>} />
                 <Route path="/user/:handle" element={<ProfilePage />} />
                 <Route path="/my-trips" element={<Navigate to="/profile" replace />} />

@@ -175,7 +175,7 @@ export const copyToBucketList = async (trip: SavedTrip): Promise<void> => {
 /** Load bucket list trips for the current user */
 export const loadBucketList = async (): Promise<SavedTrip[]> => {
   const user = await getSessionUser();
-  if (!user) return [];
+  if (!user) return loadLocalTrips().filter(t => t.isBucketList);
   const { data, error } = await supabase
     .from("trips")
     .select("*")
