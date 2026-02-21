@@ -91,6 +91,7 @@ const loadSupabaseTrips = async (): Promise<SavedTrip[]> => {
   const { data, error } = await supabase
     .from("trips")
     .select("*")
+    .neq("source", "sample")
     .order("created_at", { ascending: false });
   if (error) { console.error("loadTrips:", error.message); return []; }
   return data.map(rowToSavedTrip);

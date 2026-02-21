@@ -33,7 +33,6 @@ const Explore = () => {
       .from("trips")
       .select("*, profiles(display_name, handle, avatar_url)")
       .eq("is_public", true)
-      .eq("is_bucket_list", false)
       .order("created_at", { ascending: false })
       .then(({ data }) => {
         if (!data) return;
@@ -62,38 +61,53 @@ const Explore = () => {
       });
   }, []);
 
+  // A trip is favorited if the user owns it and has isFavorite=true,
+  // OR if the user has saved a private copy (matched by title+destination).
   const isTripFavorited = (trip: SavedTrip): boolean => {
-    if (trip.source === 'sample') {
-      return savedTrips.some(t => t.title === trip.title && t.isFavorite);
-    }
-    return savedTrips.find(t => t.id === trip.id)?.isFavorite || false;
+    const owned = savedTrips.find(t => t.id === trip.id);
+    if (owned) return owned.isFavorite ?? false;
+    return savedTrips.some(t => t.isFavorite && t.title === trip.title && t.destination === trip.destination);
   };
 
   const toggleFavorite = async (trip: SavedTrip) => {
     const isFavorited = isTripFavorited(trip);
+    const ownedTrip = savedTrips.find(t => t.id === trip.id);
 
     if (isFavorited) {
-      // Remove from bucket list — find the saved copy and delete it
-      const existingTrip = trip.source === 'sample'
-        ? savedTrips.find(t => t.title === trip.title && t.isFavorite)
-        : savedTrips.find(t => t.id === trip.id && t.isFavorite);
-      if (!existingTrip) return;
-
-      setSavedTrips(prev => prev.filter(t => t.id !== existingTrip.id));
-      toast.success("Removed from bucket list");
-      deleteTrip(existingTrip.id).catch((e: unknown) => {
-        setSavedTrips(prev => [existingTrip, ...prev]);
-        toast.error(e instanceof Error ? e.message : "Failed to remove");
-      });
+      if (ownedTrip) {
+        // Own trip — just clear the favorite flag, no copy to delete
+        const updated = { ...ownedTrip, isFavorite: false };
+        setSavedTrips(prev => prev.map(t => t.id === ownedTrip.id ? updated : t));
+        toast.success("Removed from favorites");
+        saveTrip(updated).catch(() => toast.error("Failed to update"));
+      } else {
+        // Someone else's trip — find and delete the private copy
+        const copy = savedTrips.find(t => t.isFavorite && t.title === trip.title && t.destination === trip.destination);
+        if (!copy) return;
+        setSavedTrips(prev => prev.filter(t => t.id !== copy.id));
+        toast.success("Removed from favorites");
+        deleteTrip(copy.id).catch((e: unknown) => {
+          setSavedTrips(prev => [copy, ...prev]);
+          toast.error(e instanceof Error ? e.message : "Failed to remove");
+        });
+      }
     } else {
-      // Save to bucket list — generate a proper UUID so Supabase accepts it
-      const newTrip: SavedTrip = { ...trip, id: crypto.randomUUID(), isFavorite: true, isBucketList: true };
-      setSavedTrips(prev => [...prev, newTrip]);
-      toast.success("Saved to bucket list!");
-      saveTrip(newTrip).catch((e: unknown) => {
-        setSavedTrips(prev => prev.filter(t => t.id !== newTrip.id));
-        toast.error(e instanceof Error ? e.message : "Failed to save");
-      });
+      if (ownedTrip) {
+        // Own trip — just set the favorite flag, no copy needed
+        const updated = { ...ownedTrip, isFavorite: true, isBucketList: true };
+        setSavedTrips(prev => prev.map(t => t.id === ownedTrip.id ? updated : t));
+        toast.success("Saved to favorites!");
+        saveTrip(updated).catch(() => toast.error("Failed to update"));
+      } else {
+        // Someone else's trip — create a private copy so it doesn't appear in Explore again
+        const copy: SavedTrip = { ...trip, id: crypto.randomUUID(), source: 'bucket_list', isFavorite: true, isBucketList: true, isPublic: false };
+        setSavedTrips(prev => [...prev, copy]);
+        toast.success("Saved to favorites!");
+        saveTrip(copy).catch((e: unknown) => {
+          setSavedTrips(prev => prev.filter(t => t.id !== copy.id));
+          toast.error(e instanceof Error ? e.message : "Failed to save");
+        });
+      }
     }
   };
 

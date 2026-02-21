@@ -53,7 +53,7 @@ const TripCard = ({
   return (
     <div
       className="relative rounded-xl overflow-hidden cursor-pointer group aspect-square bg-muted"
-      onClick={() => navigate(`/trip/${trip.id}`)}
+      onClick={() => navigate(`/trip/${trip.id}`, { state: { trip } })}
     >
       {/* Cover image or placeholder */}
       {coverPhoto ? (
