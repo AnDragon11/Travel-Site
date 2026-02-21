@@ -123,6 +123,8 @@ const ProfilePage = () => {
 
   // Is this the viewer's own profile?
   const isOwn = !handle;
+  // True when viewing own profile without being signed in
+  const isGuest = isOwn && !user;
 
   // Use the user ID (primitive) in effect deps to avoid re-running on every
   // Supabase onAuthStateChange event (TOKEN_REFRESHED, INITIAL_SESSION, etc.),
@@ -147,8 +149,16 @@ const ProfilePage = () => {
       setLoadError(false);
       try {
         if (isOwn) {
-          // Own profile — need to be logged in
-          if (!user) { navigate("/login"); return; }
+          if (!user) {
+            // Guest mode — serve entirely from localStorage
+            if (cancelled) return;
+            setProfile({ id: 'guest', display_name: null, handle: null, avatar_url: null, bio: null });
+            const [trips, bucket] = await Promise.all([loadTrips(), loadBucketList()]);
+            if (cancelled) return;
+            setDiaryTrips(trips.filter(t => !t.isBucketList));
+            setBucketList(bucket);
+            return;
+          }
 
           if (cancelled) return;
           const meta = user.user_metadata;
@@ -266,7 +276,7 @@ const ProfilePage = () => {
     );
   }
 
-  const displayName = profile.display_name || profile.handle || "User";
+  const displayName = profile.display_name || profile.handle || (isGuest ? "Guest" : "User");
   const initials = displayName.slice(0, 2).toUpperCase();
 
   return (
@@ -299,11 +309,12 @@ const ProfilePage = () => {
                   )}
                 </div>
                 {/* Follow / Edit buttons */}
-                {isOwn ? (
+                {isOwn && !isGuest && (
                   <Button variant="outline" size="sm" asChild>
                     <Link to="/profile-settings">Edit Profile</Link>
                   </Button>
-                ) : (
+                )}
+                {!isOwn && (
                   <Button variant="outline" size="sm" disabled title="Coming soon">
                     Follow
                   </Button>
@@ -335,6 +346,30 @@ const ProfilePage = () => {
             </div>
           </div>
         </div>
+
+        {/* ── Guest Banner ─────────────────────────────────────── */}
+        {isGuest && (
+          <div className="bg-gradient-to-r from-primary/15 via-primary/5 to-accent/20 border-b border-primary/20">
+            <div className="container mx-auto px-4 py-7 max-w-4xl text-center space-y-3">
+              <p className="text-lg font-semibold text-foreground">
+                You're browsing as a guest
+              </p>
+              <p className="text-sm text-muted-foreground max-w-xl mx-auto leading-relaxed">
+                Your trips are saved on this device only and are private to you.
+                Create an account to keep your data permanently, sync across devices,
+                share your journeys publicly, and connect with other travelers.
+              </p>
+              <div className="flex gap-3 justify-center flex-wrap pt-1">
+                <Button asChild size="default">
+                  <Link to="/login">Log in</Link>
+                </Button>
+                <Button asChild size="default" variant="outline">
+                  <Link to="/signup">Sign up</Link>
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ── Tabs ─────────────────────────────────────────────── */}
         <div className="border-b border-border/50 bg-background sticky top-16 z-10">
@@ -388,7 +423,7 @@ const ProfilePage = () => {
                       key={trip.id}
                       trip={trip}
                       isOwn={isOwn}
-                      onTogglePublic={isOwn ? handleTogglePublic : undefined}
+                      onTogglePublic={isOwn && !isGuest ? handleTogglePublic : undefined}
                       onDelete={isOwn ? handleDelete : undefined}
                       onBucketList={!isOwn ? handleBucketList : undefined}
                     />
