@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
@@ -8,7 +8,7 @@ import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { ArrowLeft, CheckCircle, XCircle, Loader } from "lucide-react";
+import { ArrowLeft, CheckCircle, XCircle, Loader, Sparkles, Plus } from "lucide-react";
 
 const HANDLE_RE = /^[a-z0-9_]+$/i;
 
@@ -164,6 +164,22 @@ const Profile = () => {
               Profile <span className="text-gradient-primary">Settings</span>
             </h1>
             <p className="text-sm text-muted-foreground mt-0.5">Manage your account and security</p>
+          </div>
+
+          {/* ── Quick Actions ── */}
+          <div className="flex gap-3 mb-6">
+            <Button asChild size="sm" className="gap-2 flex-1">
+              <Link to="/">
+                <Sparkles className="w-4 h-4" />
+                Generate Plan
+              </Link>
+            </Button>
+            <Button asChild size="sm" variant="outline" className="gap-2 flex-1">
+              <Link to="/builder">
+                <Plus className="w-4 h-4" />
+                Create Custom Trip
+              </Link>
+            </Button>
           </div>
 
           <div className="bg-card rounded-2xl border border-border/50 divide-y divide-border/50">
