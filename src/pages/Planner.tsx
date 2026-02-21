@@ -15,12 +15,14 @@ import ComfortStep from "@/components/planner/steps/ComfortStep";
 import { toast } from "sonner";
 import { useTripContext, TripFormData } from "@/context/TripContext";
 import { submitTripRequest } from "@/services/tripService";
+import { convertItineraryToTrip } from "@/lib/tripConverter";
+import { saveTrip } from "@/services/storageService";
 
 const TOTAL_STEPS = 5;
 
 const Planner = () => {
   const navigate = useNavigate();
-  const { setFormData, setItinerary, isLoading, setIsLoading, error, setError } = useTripContext();
+  const { isLoading, setIsLoading, error, setError } = useTripContext();
   const containerRef = useRef<HTMLDivElement>(null);
   
   // Step state
@@ -226,15 +228,14 @@ const Planner = () => {
         comfort_level: comfortLevel,
       };
 
-      setFormData(formData);
       setIsLoading(true);
       setError(null);
 
-      // Generate itinerary (fires webhook in background, returns placeholder)
       const itineraryData = await submitTripRequest(formData);
-      setItinerary(itineraryData);
-      toast.success("Your itinerary is ready!");
-      navigate("/itinerary");
+      const savedTrip = convertItineraryToTrip(itineraryData);
+      await saveTrip(savedTrip);
+      toast.success("Your trip is ready!");
+      navigate(`/trip/${savedTrip.id}`);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Something went wrong";
       setErrorMessage(message);

@@ -13,7 +13,7 @@ import { SavedTrip } from "@/lib/tripTypes";
 import { toast } from "sonner";
 import {
   Globe, Lock, Grid3X3,
-  MapPin, Bookmark, Trash2, Eye,
+  MapPin, Bookmark, Trash2, Eye, Sparkles, Plus,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────
@@ -44,7 +44,7 @@ const TripCard = ({
   onBucketList?: (trip: SavedTrip) => void;
 }) => {
   const navigate = useNavigate();
-  const coverPhoto = trip.photos?.[0] ?? trip.days?.[0]?.activities?.[0]?.image;
+  const coverPhoto = trip.photos?.[0] ?? trip.days?.[0]?.activities?.[0]?.image_url;
   const startDate = trip.days?.[0]?.date
     ? new Date(trip.days[0].date).toLocaleDateString(undefined, { month: "short", year: "numeric" })
     : null;
@@ -342,6 +342,16 @@ const ProfilePage = () => {
                     </div>
                   )}
                 </div>
+                {isOwn && (
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    <Button size="sm" asChild>
+                      <Link to="/"><Sparkles className="w-3.5 h-3.5 mr-1.5" /> AI Trip</Link>
+                    </Button>
+                    <Button size="sm" variant="outline" asChild>
+                      <Link to="/trip"><Plus className="w-3.5 h-3.5 mr-1.5" /> Custom Trip</Link>
+                    </Button>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -436,9 +446,14 @@ const ProfilePage = () => {
                     {isOwn ? "No trips yet" : "No public trips yet"}
                   </p>
                   {isOwn && (
-                    <Button className="mt-4" asChild>
-                      <Link to="/">Plan your first trip</Link>
-                    </Button>
+                    <div className="flex flex-col sm:flex-row gap-3 justify-center mt-4">
+                      <Button asChild>
+                        <Link to="/"><Sparkles className="w-4 h-4 mr-2" /> AI-Generated Trip</Link>
+                      </Button>
+                      <Button asChild variant="outline">
+                        <Link to="/trip"><Plus className="w-4 h-4 mr-2" /> Create Custom Trip</Link>
+                      </Button>
+                    </div>
                   )}
                 </div>
               )}

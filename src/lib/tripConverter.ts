@@ -67,7 +67,7 @@ export const convertItineraryToTrip = (
   }));
 
   return {
-    id: generateId(),
+    id: crypto.randomUUID(),
     source: 'ai',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -75,6 +75,7 @@ export const convertItineraryToTrip = (
     destination: itinerary.destination,
     travelers: itinerary.travelers,
     days,
+    isBucketList: true,
     aiMetadata: {
       comfortLevel: itinerary.comfort_level,
       comfortLevelName: itinerary.comfort_level_name,

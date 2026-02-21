@@ -7,7 +7,7 @@ import { BuilderDay } from "@/pages/TripBuilder";
 export interface SavedTrip {
   // Metadata
   id: string;
-  source: 'ai' | 'custom' | 'bucket_list';
+  source: 'ai' | 'custom' | 'bucket_list' | 'sample';
   createdAt: string;
   updatedAt: string;
 

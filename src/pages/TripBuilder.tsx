@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
@@ -16,7 +16,7 @@ import { cn } from "@/lib/utils";
 import {
   Plane, Hotel, Utensils, Camera, MapPin, Clock, Plus, Trash2, Pencil, Save,
   Ticket, Coffee, ShoppingBag, Bus, Car, Train, Footprints, ImagePlus,
-  Calendar, Users, ArrowLeft, GripVertical, Star, Heart, Tag,
+  Calendar, Users, ArrowLeft, GripVertical, Heart, Tag,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -426,11 +426,13 @@ const ActivityDialog = ({
 const TripBuilder = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
+  const fromExplore = (location.state as { from?: string } | null)?.from === 'explore';
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(1000);
 
   const [trip, setTrip] = useState<SavedTrip>({
-    id: generateId(),
+    id: crypto.randomUUID(),
     source: 'custom',
     title: "My Trip",
     destination: "",
@@ -442,6 +444,12 @@ const TripBuilder = () => {
 
   // Load existing trip if editing
   useEffect(() => {
+    // Navigation state takes priority (e.g. trip passed from Explore for public/sample trips)
+    const stateTrip = (location.state as { trip?: SavedTrip } | null)?.trip;
+    if (stateTrip) {
+      setTrip(stateTrip);
+      return;
+    }
     if (!id) return;
     loadTrips().then(trips => {
       const found = trips.find(t => t.id === id);
@@ -559,10 +567,14 @@ const TripBuilder = () => {
   };
 
   const saveTrip = async () => {
-    const updated = { ...trip, updatedAt: new Date().toISOString() };
-    await saveToStorage(updated);
-    toast.success("Trip saved!");
-    navigate("/my-trips");
+    try {
+      const updated = { ...trip, updatedAt: new Date().toISOString() };
+      await saveToStorage(updated);
+      toast.success("Trip saved!");
+      navigate("/profile");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to save trip");
+    }
   };
 
   // ─── Snake layout (per day, matching itinerary style) ──────────
@@ -662,8 +674,8 @@ const TripBuilder = () => {
         <section className="bg-gradient-to-br from-primary via-primary/90 to-primary/80 text-primary-foreground py-8 md:py-12">
           <div className="container mx-auto px-4">
             <div className="max-w-6xl mx-auto">
-              <Button variant="ghost" size="sm" className="text-primary-foreground/70 hover:text-primary-foreground hover:bg-primary-foreground/10 mb-4 -ml-2" onClick={() => navigate("/my-trips")}>
-                <ArrowLeft className="w-4 h-4 mr-1" /> My Trips
+              <Button variant="ghost" size="sm" className="text-primary-foreground/70 hover:text-primary-foreground hover:bg-primary-foreground/10 mb-4 -ml-2" onClick={() => navigate(fromExplore ? "/explore" : "/profile")}>
+                <ArrowLeft className="w-4 h-4 mr-1" /> {fromExplore ? "Explore" : "My Trips"}
               </Button>
 
               <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
@@ -697,27 +709,6 @@ const TripBuilder = () => {
                       <span className="text-sm text-primary-foreground/70">travelers</span>
                     </div>
 
-                    {/* Rating Stars */}
-                    <div className="flex items-center gap-1 bg-primary-foreground/10 rounded-lg px-3 py-1.5">
-                      {[1, 2, 3, 4, 5].map((star) => (
-                        <button
-                          key={star}
-                          type="button"
-                          onClick={() => setTrip((p) => ({ ...p, rating: star }))}
-                          className="hover:scale-110 transition-transform"
-                        >
-                          <Star
-                            className={cn(
-                              "w-4 h-4",
-                              trip.rating && star <= trip.rating
-                                ? "fill-yellow-400 text-yellow-400"
-                                : "text-primary-foreground/30 hover:text-yellow-400"
-                            )}
-                          />
-                        </button>
-                      ))}
-                    </div>
-
                     {/* Favorite */}
                     <button
                       type="button"
@@ -738,16 +729,6 @@ const TripBuilder = () => {
                     </button>
                   </div>
 
-                  {/* Trip Review */}
-                  <div className="mt-3">
-                    <textarea
-                      value={trip.review || ''}
-                      onChange={(e) => setTrip((p) => ({ ...p, review: e.target.value }))}
-                      placeholder="Add a review or notes about this trip..."
-                      className="w-full bg-primary-foreground/10 rounded-lg px-3 py-2 text-sm text-primary-foreground placeholder:text-primary-foreground/40 border-none outline-none resize-none"
-                      rows={2}
-                    />
-                  </div>
                 </div>
 
                 <div className="flex items-center gap-3">

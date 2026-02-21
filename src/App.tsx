@@ -8,14 +8,14 @@ import { AuthProvider } from "@/context/AuthContext";
 import { PreferencesProvider } from "@/context/PreferencesContext";
 import { ThemeProvider } from "next-themes";
 import Planner from "./pages/Planner";
-import Itinerary from "./pages/Itinerary";
 import MyTrips from "./pages/MyTrips";
 import ProfileSettings from "./pages/ProfileSettings";
 import ProfilePage from "./pages/ProfilePage";
-import { Navigate } from "react-router-dom";
+import { Navigate, useParams } from "react-router-dom";
+
+const BuilderIdRedirect = () => { const { id } = useParams(); return <Navigate to={`/trip/${id}`} replace />; };
 import TripBuilder from "./pages/TripBuilder";
 import Explore from "./pages/Explore";
-import TripView from "./pages/TripView";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 
@@ -43,10 +43,10 @@ const App = () => (
                 <Route path="/profile-settings" element={<ProtectedRoute><ProfileSettings /></ProtectedRoute>} />
                 <Route path="/user/:handle" element={<ProfilePage />} />
                 <Route path="/my-trips" element={<Navigate to="/profile" replace />} />
-                <Route path="/itinerary" element={<Itinerary />} />
-                <Route path="/trip/:id" element={<TripView />} />
-                <Route path="/builder" element={<TripBuilder />} />
-                <Route path="/builder/:id" element={<TripBuilder />} />
+                <Route path="/trip" element={<TripBuilder />} />
+                <Route path="/trip/:id" element={<TripBuilder />} />
+                <Route path="/builder" element={<Navigate to="/trip" replace />} />
+                <Route path="/builder/:id" element={<BuilderIdRedirect />} />
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />
               </Routes>

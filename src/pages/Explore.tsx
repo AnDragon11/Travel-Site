@@ -1,282 +1,15 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
-import { MapPin, Calendar, Users, Heart, Compass, Filter, Search, X } from "lucide-react";
+import { MapPin, Heart, Compass, Filter, Search, X } from "lucide-react";
 import { SavedTrip } from "@/lib/tripTypes";
 import { cn } from "@/lib/utils";
 import { loadTrips, saveTrip, deleteTrip } from "@/services/storageService";
+import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
-// Placeholder trips marked as samples
-const PLACEHOLDER_TRIPS: SavedTrip[] = [
-  {
-    id: "sample-1",
-    source: "ai",
-    createdAt: "2025-01-15T10:00:00Z",
-    updatedAt: "2025-01-15T10:00:00Z",
-    title: "Romantic Getaway in Paris",
-    destination: "Paris, France",
-    travelers: 2,
-    tags: ["Romance", "Culture", "Fine Dining"],
-    days: [
-      {
-        date: "2025-03-15",
-        activities: [
-          {
-            id: "act-1",
-            time: "09:00",
-            title: "Visit Eiffel Tower",
-            description: "Iconic landmark with stunning views",
-            location: "Champ de Mars",
-            cost: 26,
-            image: "https://images.unsplash.com/photo-1511739001486-6bfe10ce785f",
-            duration: "2 hours",
-            transportType: "metro",
-            transportDuration: "20 min",
-            category: "sightseeing"
-          },
-          {
-            id: "act-2",
-            time: "14:00",
-            title: "Louvre Museum",
-            description: "World's largest art museum",
-            location: "Rue de Rivoli",
-            cost: 17,
-            image: "https://images.unsplash.com/photo-1499856871958-5b9627545d1a",
-            duration: "3 hours",
-            transportType: "walk",
-            transportDuration: "10 min",
-            category: "culture"
-          }
-        ]
-      },
-      {
-        date: "2025-03-16",
-        activities: [
-          {
-            id: "act-3",
-            time: "10:00",
-            title: "Versailles Palace",
-            description: "Royal château with magnificent gardens",
-            location: "Versailles",
-            cost: 20,
-            image: "https://images.unsplash.com/photo-1542649180-330233d55156",
-            duration: "4 hours",
-            transportType: "train",
-            transportDuration: "45 min",
-            category: "sightseeing"
-          }
-        ]
-      }
-    ],
-    aiMetadata: {
-      comfortLevel: 3,
-      comfortLevelName: "Premium",
-      comfortLevelEmoji: "💎",
-      originalDates: "2025-03-15 - 2025-03-16"
-    }
-  },
-  {
-    id: "sample-2",
-    source: "custom",
-    createdAt: "2025-01-10T14:30:00Z",
-    updatedAt: "2025-01-10T14:30:00Z",
-    title: "Adventure in Iceland",
-    destination: "Reykjavik, Iceland",
-    travelers: 4,
-    tags: ["Adventure", "Nature", "Photography"],
-    days: [
-      {
-        date: "2025-06-10",
-        activities: [
-          {
-            id: "act-4",
-            time: "07:00",
-            title: "Golden Circle Tour",
-            description: "Geysers, waterfalls, and geothermal areas",
-            location: "South Iceland",
-            cost: 89,
-            image: "https://images.unsplash.com/photo-1504893524553-b855bce32c67",
-            duration: "8 hours",
-            transportType: "bus",
-            transportDuration: "1 hour",
-            category: "adventure"
-          },
-          {
-            id: "act-5",
-            time: "18:00",
-            title: "Blue Lagoon",
-            description: "Geothermal spa in lava field",
-            location: "Grindavík",
-            cost: 75,
-            image: "https://images.unsplash.com/photo-1551361415-69c87624334f",
-            duration: "2 hours",
-            transportType: "car",
-            transportDuration: "30 min",
-            category: "relaxation"
-          }
-        ]
-      }
-    ]
-  },
-  {
-    id: "sample-3",
-    source: "custom",
-    createdAt: "2025-01-08T09:15:00Z",
-    updatedAt: "2025-01-08T09:15:00Z",
-    title: "Tokyo Food & Culture Tour",
-    destination: "Tokyo, Japan",
-    travelers: 3,
-    tags: ["Food", "Culture", "Shopping"],
-    days: [
-      {
-        date: "2025-04-20",
-        activities: [
-          {
-            id: "act-6",
-            time: "06:00",
-            title: "Tsukiji Fish Market",
-            description: "Fresh sushi breakfast experience",
-            location: "Chuo City",
-            cost: 35,
-            image: "https://images.unsplash.com/photo-1555939594-58d7cb561ad1",
-            duration: "2 hours",
-            transportType: "metro",
-            transportDuration: "15 min",
-            category: "food"
-          },
-          {
-            id: "act-7",
-            time: "11:00",
-            title: "Senso-ji Temple",
-            description: "Tokyo's oldest Buddhist temple",
-            location: "Asakusa",
-            cost: 0,
-            image: "https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e",
-            duration: "1.5 hours",
-            transportType: "metro",
-            transportDuration: "20 min",
-            category: "culture"
-          },
-          {
-            id: "act-8",
-            time: "19:00",
-            title: "Shibuya Crossing",
-            description: "World's busiest pedestrian crossing",
-            location: "Shibuya",
-            cost: 0,
-            image: "https://images.unsplash.com/photo-1542051841857-5f90071e7989",
-            duration: "1 hour",
-            transportType: "metro",
-            transportDuration: "10 min",
-            category: "sightseeing"
-          }
-        ]
-      }
-    ]
-  },
-  {
-    id: "sample-4",
-    source: "custom",
-    createdAt: "2025-01-05T16:45:00Z",
-    updatedAt: "2025-01-05T16:45:00Z",
-    title: "Beach Relaxation in Bali",
-    destination: "Bali, Indonesia",
-    travelers: 2,
-    tags: ["Beach", "Relaxation", "Yoga"],
-    days: [
-      {
-        date: "2025-07-01",
-        activities: [
-          {
-            id: "act-9",
-            time: "09:00",
-            title: "Tegallalang Rice Terraces",
-            description: "Iconic green rice paddies",
-            location: "Ubud",
-            cost: 15,
-            image: "https://images.unsplash.com/photo-1537996194471-e657df975ab4",
-            duration: "2 hours",
-            transportType: "scooter",
-            transportDuration: "30 min",
-            category: "nature"
-          },
-          {
-            id: "act-10",
-            time: "15:00",
-            title: "Beach Club Afternoon",
-            description: "Infinity pool and ocean views",
-            location: "Seminyak Beach",
-            cost: 50,
-            image: "https://images.unsplash.com/photo-1559827260-dc66d52bef19",
-            duration: "4 hours",
-            transportType: "taxi",
-            transportDuration: "25 min",
-            category: "relaxation"
-          }
-        ]
-      }
-    ]
-  },
-  {
-    id: "sample-5",
-    source: "custom",
-    createdAt: "2025-01-02T11:20:00Z",
-    updatedAt: "2025-01-02T11:20:00Z",
-    title: "New York City Explorer",
-    destination: "New York, USA",
-    travelers: 1,
-    tags: ["Urban", "Entertainment", "Food"],
-    days: [
-      {
-        date: "2025-05-12",
-        activities: [
-          {
-            id: "act-11",
-            time: "08:00",
-            title: "Central Park Walk",
-            description: "Morning stroll through iconic park",
-            location: "Central Park",
-            cost: 0,
-            image: "https://images.unsplash.com/photo-1568515387631-8b650bbcdb90",
-            duration: "2 hours",
-            transportType: "walk",
-            transportDuration: "5 min",
-            category: "nature"
-          },
-          {
-            id: "act-12",
-            time: "14:00",
-            title: "Metropolitan Museum",
-            description: "World-class art collection",
-            location: "5th Avenue",
-            cost: 30,
-            image: "https://images.unsplash.com/photo-1585336103105-3e51b1154524",
-            duration: "3 hours",
-            transportType: "walk",
-            transportDuration: "10 min",
-            category: "culture"
-          },
-          {
-            id: "act-13",
-            time: "20:00",
-            title: "Broadway Show",
-            description: "Hamilton musical performance",
-            location: "Times Square",
-            cost: 150,
-            image: "https://images.unsplash.com/photo-1503095396549-807759245b35",
-            duration: "2.5 hours",
-            transportType: "metro",
-            transportDuration: "15 min",
-            category: "entertainment"
-          }
-        ]
-      }
-    ]
-  }
-];
 
 type SortOption = 'recent' | 'popular' | 'budget-low' | 'budget-high';
 
@@ -290,14 +23,47 @@ const Explore = () => {
   const [sortBy, setSortBy] = useState<SortOption>('popular');
   const [showFilters, setShowFilters] = useState(false);
   const [savedTrips, setSavedTrips] = useState<SavedTrip[]>([]);
+  const [dbPublicTrips, setDbPublicTrips] = useState<SavedTrip[]>([]);
+  const [tripAuthors, setTripAuthors] = useState<Record<string, { display_name: string | null; handle: string | null; avatar_url: string | null }>>({});
 
   useEffect(() => {
     loadTrips().then(setSavedTrips);
+    // Load real public trips + author info from DB
+    supabase
+      .from("trips")
+      .select("*, profiles(display_name, handle, avatar_url)")
+      .eq("is_public", true)
+      .eq("is_bucket_list", false)
+      .order("created_at", { ascending: false })
+      .then(({ data }) => {
+        if (!data) return;
+        const authors: typeof tripAuthors = {};
+        setDbPublicTrips(data.map(row => {
+          const profile = row.profiles as { display_name: string | null; handle: string | null; avatar_url: string | null } | null;
+          if (profile) authors[row.id] = profile;
+          return {
+            id: row.id,
+            source: row.source as SavedTrip['source'],
+            createdAt: row.created_at,
+            updatedAt: row.updated_at,
+            title: row.title,
+            destination: row.destination,
+            travelers: row.travelers,
+            days: (row.days as unknown as SavedTrip['days']) ?? [],
+            isFavorite: row.is_favorite,
+            isPublic: row.is_public,
+            isBucketList: row.is_bucket_list,
+            photos: (row.photos as string[]) ?? undefined,
+            tags: (row.tags as string[]) ?? undefined,
+            aiMetadata: row.ai_metadata as SavedTrip['aiMetadata'] ?? undefined,
+          };
+        }));
+        setTripAuthors(authors);
+      });
   }, []);
 
-  // Sample trips have non-UUID ids like "sample-5" — match by title instead
   const isTripFavorited = (trip: SavedTrip): boolean => {
-    if (trip.id.startsWith("sample-")) {
+    if (trip.source === 'sample') {
       return savedTrips.some(t => t.title === trip.title && t.isFavorite);
     }
     return savedTrips.find(t => t.id === trip.id)?.isFavorite || false;
@@ -308,7 +74,7 @@ const Explore = () => {
 
     if (isFavorited) {
       // Remove from bucket list — find the saved copy and delete it
-      const existingTrip = trip.id.startsWith("sample-")
+      const existingTrip = trip.source === 'sample'
         ? savedTrips.find(t => t.title === trip.title && t.isFavorite)
         : savedTrips.find(t => t.id === trip.id && t.isFavorite);
       if (!existingTrip) return;
@@ -331,8 +97,10 @@ const Explore = () => {
     }
   };
 
-  const destinations = Array.from(new Set(PLACEHOLDER_TRIPS.map(t => t.destination)));
-  const allTags = Array.from(new Set(PLACEHOLDER_TRIPS.flatMap(t => t.tags || [])));
+  const allTrips = dbPublicTrips;
+
+  const destinations = Array.from(new Set(allTrips.map(t => t.destination)));
+  const allTags = Array.from(new Set(allTrips.flatMap(t => t.tags || [])));
 
   const calculateTripCost = (trip: SavedTrip) =>
     trip.days.reduce((t, d) => t + d.activities.reduce((s, a) => s + (a.cost || 0), 0), 0);
@@ -340,7 +108,7 @@ const Explore = () => {
   const hasActiveFilters = !!(searchQuery || selectedDestination || selectedTags.length > 0 ||
                            minBudget !== null || maxBudget !== null);
 
-  const filteredTrips = PLACEHOLDER_TRIPS.filter(trip => {
+  const filteredTrips = allTrips.filter(trip => {
     if (searchQuery && !trip.title.toLowerCase().includes(searchQuery.toLowerCase()) &&
         !trip.destination.toLowerCase().includes(searchQuery.toLowerCase())) return false;
     if (selectedDestination && trip.destination !== selectedDestination) return false;
@@ -376,12 +144,14 @@ const Explore = () => {
   const TripCard = ({ trip }: { trip: SavedTrip }) => {
     const totalCost = calculateTripCost(trip);
     const isFavorited = isTripFavorited(trip);
-    const coverImage = trip.days[0]?.activities[0]?.image;
+    const firstAct = trip.days[0]?.activities[0] as any;
+    const coverImage = firstAct?.image_url || firstAct?.image;
+    const author = tripAuthors[trip.id];
 
     return (
       <div
         className="bg-card rounded-xl border border-border/50 overflow-hidden hover:shadow-md transition-all group cursor-pointer"
-        onClick={() => navigate(`/trip/${trip.id}`)}
+        onClick={() => navigate(`/trip/${trip.id}`, { state: { trip, from: 'explore' } })}
       >
         {/* Cover image */}
         <div className="relative aspect-[4/3] bg-muted overflow-hidden">
@@ -420,6 +190,23 @@ const Explore = () => {
         </div>
 
         {/* Below-image strip */}
+        {author && (
+          <div className="px-3 pt-2 flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
+            {author.avatar_url ? (
+              <img src={author.avatar_url} alt="" className="w-5 h-5 rounded-full object-cover shrink-0" />
+            ) : (
+              <div className="w-5 h-5 rounded-full bg-primary/20 flex items-center justify-center text-[9px] font-bold text-primary shrink-0">
+                {(author.display_name || author.handle || '?')[0].toUpperCase()}
+              </div>
+            )}
+            <Link
+              to={author.handle ? `/user/${author.handle}` : '#'}
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors truncate"
+            >
+              {author.display_name || (author.handle ? `@${author.handle}` : 'Anonymous')}
+            </Link>
+          </div>
+        )}
         <div className="px-3 py-2 flex items-center justify-between">
           <div className="flex gap-1">
             {(trip.tags || []).slice(0, 2).map((tag, i) => (

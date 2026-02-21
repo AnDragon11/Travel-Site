@@ -170,7 +170,7 @@ const MyTrips = () => {
               size="sm"
               onClick={(e) => {
                 e.stopPropagation();
-                navigate(`/builder/${trip.id}`);
+                navigate(`/trip/${trip.id}`);
               }}
             >
               <Pencil className="w-4 h-4 mr-1" /> Edit
@@ -224,7 +224,7 @@ const MyTrips = () => {
                     </Link>
                   </Button>
                   <Button asChild size="lg" variant="outline" className="gap-2">
-                    <Link to="/builder">
+                    <Link to="/trip">
                       <Plus className="w-5 h-5" />
                       Create Custom Trip
                     </Link>
@@ -309,7 +309,7 @@ const MyTrips = () => {
                         </Link>
                       </Button>
                       <Button asChild size="lg" variant="outline">
-                        <Link to="/builder">
+                        <Link to="/trip">
                           <Plus className="w-5 h-5 mr-2" /> Create Custom Trip
                         </Link>
                       </Button>

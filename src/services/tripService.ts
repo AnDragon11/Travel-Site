@@ -392,10 +392,11 @@ const submitDirectToN8n = async (formData: TripFormData): Promise<TripItinerary>
 };
 
 /**
- * Authenticated flow: insert a request row into Supabase, then wait for n8n
- * to write the result back via a database webhook → Realtime subscription.
+ * Supabase flow: insert a request row, then wait for n8n to write the result
+ * back via a database webhook → Realtime subscription.
+ * Works for both authenticated users (userId = string) and guests (userId = null).
  */
-const submitViaSupabase = (formData: TripFormData, userId: string): Promise<TripItinerary> => {
+const submitViaSupabase = (formData: TripFormData, userId: string | null): Promise<TripItinerary> => {
   return new Promise((resolve, reject) => {
     let channel: ReturnType<typeof supabase.channel> | null = null;
 
@@ -421,12 +422,18 @@ const submitViaSupabase = (formData: TripFormData, userId: string): Promise<Trip
 
         if (error || !data) {
           clearTimeout(timeoutId);
-          reject(new Error(error?.message || "Failed to create itinerary request"));
+          // Supabase insert failed — fall back to direct n8n call for guests
+          if (userId === null) {
+            console.warn("Guest Supabase insert failed, falling back to direct n8n call:", error?.message);
+            submitDirectToN8n(formData).then(resolve).catch(reject);
+          } else {
+            reject(new Error(error?.message || "Failed to create itinerary request"));
+          }
           return;
         }
 
         const requestId = data.id;
-        console.log("Itinerary request created:", requestId);
+        console.log("Itinerary request created:", requestId, userId ? `(user: ${userId})` : "(guest)");
 
         channel = supabase
           .channel(`itinerary-${requestId}`)
@@ -460,7 +467,14 @@ const submitViaSupabase = (formData: TripFormData, userId: string): Promise<Trip
               }
             }
           )
-          .subscribe();
+          .subscribe((status, err) => {
+            console.log("Realtime subscription status:", status, err ?? "");
+            if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+              clearTimeout(timeoutId);
+              cleanup();
+              reject(new Error(`Realtime subscription failed: ${status}`));
+            }
+          });
       } catch (err) {
         clearTimeout(timeoutId);
         cleanup();
@@ -472,19 +486,18 @@ const submitViaSupabase = (formData: TripFormData, userId: string): Promise<Trip
 
 /**
  * Main entry point called by Planner.tsx.
- * Routes to Supabase flow for authenticated users, direct n8n call for guests.
+ * Both authenticated users and guests use the Supabase INSERT + Realtime flow
+ * so n8n always has a row to write the result back to.
+ * Guests get user_id = null; if that insert fails (e.g. SQL not yet run),
+ * they fall back to a direct n8n HTTP call.
  */
 export const submitTripRequest = async (formData: TripFormData): Promise<TripItinerary> => {
   console.log("=== Trip Planning Request ===");
   console.log("Form Data:", JSON.stringify(formData, null, 2));
 
   const { data: { session } } = await supabase.auth.getSession();
+  const userId = session?.user?.id ?? null;
 
-  if (session?.user) {
-    console.log("Authenticated — routing via Supabase");
-    return submitViaSupabase(formData, session.user.id);
-  }
-
-  console.log("Guest — routing directly to n8n");
-  return submitDirectToN8n(formData);
+  console.log(userId ? `Authenticated (${userId}) — routing via Supabase` : "Guest — routing via Supabase with null user_id");
+  return submitViaSupabase(formData, userId);
 };

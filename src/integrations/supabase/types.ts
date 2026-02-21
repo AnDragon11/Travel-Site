@@ -83,8 +83,8 @@ export type Database = {
       trips: {
         Row: {
           id: string
-          user_id: string
-          source: 'ai' | 'custom' | 'bucket_list'
+          user_id: string | null
+          source: 'ai' | 'custom' | 'bucket_list' | 'sample'
           title: string
           destination: string
           travelers: number
@@ -102,8 +102,8 @@ export type Database = {
         }
         Insert: {
           id?: string
-          user_id: string
-          source: 'ai' | 'custom' | 'bucket_list'
+          user_id?: string | null
+          source: 'ai' | 'custom' | 'bucket_list' | 'sample'
           title: string
           destination: string
           travelers: number
@@ -121,8 +121,8 @@ export type Database = {
         }
         Update: {
           id?: string
-          user_id?: string
-          source?: 'ai' | 'custom' | 'bucket_list'
+          user_id?: string | null
+          source?: 'ai' | 'custom' | 'bucket_list' | 'sample'
           title?: string
           destination?: string
           travelers?: number
