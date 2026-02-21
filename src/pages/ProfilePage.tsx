@@ -44,7 +44,8 @@ const TripCard = ({
   onBucketList?: (trip: SavedTrip) => void;
 }) => {
   const navigate = useNavigate();
-  const coverPhoto = trip.photos?.[0] ?? trip.days?.[0]?.activities?.[0]?.image_url;
+  const firstAct = trip.days?.[0]?.activities?.[0] as unknown as (Record<string, string>) | undefined;
+  const coverPhoto = trip.photos?.[0] ?? firstAct?.image_url ?? firstAct?.image;
   const startDate = trip.days?.[0]?.date
     ? new Date(trip.days[0].date).toLocaleDateString(undefined, { month: "short", year: "numeric" })
     : null;
