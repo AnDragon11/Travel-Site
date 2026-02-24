@@ -45,22 +45,28 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         if (provider && provider !== "email") {
           // OAuth sign-in: migrate localStorage trips
           void migrateLocalToSupabase();
-          // Sync handle + display_name into auth metadata so ProfileSettings reads them correctly
+          // Sync handle, display_name, and avatar_url into auth metadata
           setTimeout(async () => {
             const updates: Record<string, string> = {};
 
-            if (!session.user.user_metadata?.handle) {
-              const { data } = await supabase
-                .from("profiles")
-                .select("handle")
-                .eq("id", session.user!.id)
-                .single();
-              if (data?.handle) updates.handle = data.handle;
+            const { data: profile } = await supabase
+              .from("profiles")
+              .select("handle, avatar_url")
+              .eq("id", session.user!.id)
+              .single();
+
+            if (profile?.handle && !session.user.user_metadata?.handle) {
+              updates.handle = profile.handle;
             }
 
             // Google stores the user's name as full_name; map it to display_name
             if (!session.user.user_metadata?.display_name && session.user.user_metadata?.full_name) {
               updates.display_name = session.user.user_metadata.full_name;
+            }
+
+            // If DB has a different avatar (e.g. manually uploaded), it takes priority over Google's
+            if (profile?.avatar_url && profile.avatar_url !== session.user.user_metadata?.avatar_url) {
+              updates.avatar_url = profile.avatar_url;
             }
 
             if (Object.keys(updates).length > 0) {
