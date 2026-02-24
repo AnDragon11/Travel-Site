@@ -9,6 +9,7 @@ interface AuthContextType {
   loading: boolean;
   signUp: (email: string, password: string, displayName?: string, handle?: string) => Promise<{ error: Error | null }>;
   signIn: (identifier: string, password: string) => Promise<{ error: Error | null }>;
+  signInWithGoogle: () => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
 }
 
@@ -34,10 +35,40 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setLoading(false);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
+
+      if (event === "SIGNED_IN" && session?.user) {
+        const provider = session.user.app_metadata?.provider;
+        if (provider && provider !== "email") {
+          // OAuth sign-in: migrate localStorage trips
+          void migrateLocalToSupabase();
+          // Sync handle + display_name into auth metadata so ProfileSettings reads them correctly
+          setTimeout(async () => {
+            const updates: Record<string, string> = {};
+
+            if (!session.user.user_metadata?.handle) {
+              const { data } = await supabase
+                .from("profiles")
+                .select("handle")
+                .eq("id", session.user!.id)
+                .single();
+              if (data?.handle) updates.handle = data.handle;
+            }
+
+            // Google stores the user's name as full_name; map it to display_name
+            if (!session.user.user_metadata?.display_name && session.user.user_metadata?.full_name) {
+              updates.display_name = session.user.user_metadata.full_name;
+            }
+
+            if (Object.keys(updates).length > 0) {
+              await supabase.auth.updateUser({ data: updates });
+            }
+          }, 1000);
+        }
+      }
     });
 
     return () => subscription.unsubscribe();
@@ -82,12 +113,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return { error };
   };
 
+  const signInWithGoogle = async () => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: `${window.location.origin}/profile` },
+    });
+    return { error };
+  };
+
   const signOut = async () => {
     await supabase.auth.signOut();
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, loading, signUp, signIn, signOut }}>
+    <AuthContext.Provider value={{ user, session, loading, signUp, signIn, signInWithGoogle, signOut }}>
       {children}
     </AuthContext.Provider>
   );

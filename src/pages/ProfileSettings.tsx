@@ -137,6 +137,7 @@ const Profile = () => {
       await supabase.from("profiles").update({
         display_name: displayName.trim(),
         handle: normalizedHandle,
+        passport_country: passportCountry,
         updated_at: new Date().toISOString(),
       }).eq("id", user.id);
     }
