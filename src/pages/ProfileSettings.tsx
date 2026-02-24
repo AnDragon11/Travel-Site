@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
@@ -8,7 +8,7 @@ import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { ArrowLeft, CheckCircle, XCircle, Loader } from "lucide-react";
+import { ArrowLeft, CheckCircle, XCircle, Loader, Camera } from "lucide-react";
 
 const HANDLE_RE = /^[a-z0-9_]+$/i;
 
@@ -19,6 +19,7 @@ const Profile = () => {
 
   const [displayName, setDisplayName] = useState(user?.user_metadata?.display_name ?? "");
   const [handle, setHandle] = useState(user?.user_metadata?.handle ?? "");
+  const [passportCountry, setPassportCountry] = useState(user?.user_metadata?.passport_country ?? "");
   const [savingInfo, setSavingInfo] = useState(false);
 
   // Handle availability check
@@ -37,6 +38,12 @@ const Profile = () => {
 
   const [phone, setPhone] = useState(user?.phone ?? "");
   const [savingPhone, setSavingPhone] = useState(false);
+
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(user?.user_metadata?.avatar_url ?? null);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const initials = (displayName || user?.email || "").slice(0, 2).toUpperCase();
 
   // Debounced handle availability check (skip if unchanged)
   useEffect(() => {
@@ -61,6 +68,7 @@ const Profile = () => {
     if (user) {
       setDisplayName(user.user_metadata?.display_name ?? "");
       setHandle(user.user_metadata?.handle ?? "");
+      setPassportCountry(user.user_metadata?.passport_country ?? "");
       setPhone(user.phone ?? "");
     }
   }, [user]);
@@ -80,6 +88,39 @@ const Profile = () => {
     return null;
   };
 
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) { toast.error("Image must be under 2 MB"); return; }
+
+    setUploading(true);
+    try {
+      const ext = file.name.split(".").pop() ?? "jpg";
+      const path = `${user.id}/avatar.${ext}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("avatars")
+        .upload(path, file, { upsert: true });
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage.from("avatars").getPublicUrl(path);
+      const urlWithBust = `${publicUrl}?t=${Date.now()}`;
+
+      await supabase.auth.updateUser({ data: { avatar_url: urlWithBust } });
+      await supabase.from("profiles")
+        .update({ avatar_url: urlWithBust, updated_at: new Date().toISOString() })
+        .eq("id", user.id);
+
+      setAvatarUrl(urlWithBust);
+      toast.success("Profile picture updated");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploading(false);
+      e.target.value = "";
+    }
+  };
+
   const handleSaveInfo = async (e: React.FormEvent) => {
     e.preventDefault();
     const normalizedHandle = handle.toLowerCase().trim();
@@ -90,7 +131,7 @@ const Profile = () => {
 
     setSavingInfo(true);
     const { error } = await supabase.auth.updateUser({
-      data: { display_name: displayName.trim(), handle: normalizedHandle },
+      data: { display_name: displayName.trim(), handle: normalizedHandle, passport_country: passportCountry },
     });
     if (!error) {
       await supabase.from("profiles").update({
@@ -168,6 +209,46 @@ const Profile = () => {
 
           <div className="bg-card rounded-2xl border border-border/50 divide-y divide-border/50">
 
+            {/* ── Profile Picture ── */}
+            <div className="p-4">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Profile Picture</p>
+              <div className="flex items-center gap-4">
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                  className="relative w-20 h-20 rounded-full bg-gradient-primary flex items-center justify-center overflow-hidden ring-4 ring-background shadow-md group shrink-0"
+                >
+                  {avatarUrl ? (
+                    <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="text-2xl font-bold text-white">{initials}</span>
+                  )}
+                  <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    {uploading
+                      ? <Loader className="w-5 h-5 text-white animate-spin" />
+                      : <Camera className="w-5 h-5 text-white" />
+                    }
+                  </div>
+                </button>
+                <div>
+                  <p className="text-sm text-foreground font-medium">Upload a photo</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">JPG, PNG or GIF · Max 2 MB</p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="mt-2 h-7 text-xs px-3"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploading}
+                  >
+                    {uploading ? "Uploading…" : "Choose file"}
+                  </Button>
+                </div>
+                <input ref={fileInputRef} type="file" accept="image/*" onChange={handleAvatarUpload} className="hidden" />
+              </div>
+            </div>
+
             {/* ── Account Info ── */}
             <form onSubmit={handleSaveInfo} className="p-4">
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Account</p>
@@ -207,6 +288,52 @@ const Profile = () => {
                     className="flex-1 h-full pr-3 bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
                   />
                 </div>
+              </div>
+              {/* Passport country row */}
+              <div className="space-y-1 mb-3">
+                <label className="text-xs text-muted-foreground">Passport country</label>
+                <select
+                  value={passportCountry}
+                  onChange={e => setPassportCountry(e.target.value)}
+                  className="w-full h-8 rounded-md border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+                >
+                  <option value="">Select country…</option>
+                  <option value="AU">Australia</option>
+                  <option value="AT">Austria</option>
+                  <option value="BE">Belgium</option>
+                  <option value="BR">Brazil</option>
+                  <option value="CA">Canada</option>
+                  <option value="CN">China</option>
+                  <option value="DK">Denmark</option>
+                  <option value="FI">Finland</option>
+                  <option value="FR">France</option>
+                  <option value="DE">Germany</option>
+                  <option value="IN">India</option>
+                  <option value="ID">Indonesia</option>
+                  <option value="IE">Ireland</option>
+                  <option value="IL">Israel</option>
+                  <option value="IT">Italy</option>
+                  <option value="JP">Japan</option>
+                  <option value="MX">Mexico</option>
+                  <option value="NL">Netherlands</option>
+                  <option value="NZ">New Zealand</option>
+                  <option value="NO">Norway</option>
+                  <option value="PL">Poland</option>
+                  <option value="PT">Portugal</option>
+                  <option value="RU">Russia</option>
+                  <option value="SA">Saudi Arabia</option>
+                  <option value="SG">Singapore</option>
+                  <option value="ZA">South Africa</option>
+                  <option value="KR">South Korea</option>
+                  <option value="ES">Spain</option>
+                  <option value="SE">Sweden</option>
+                  <option value="CH">Switzerland</option>
+                  <option value="TR">Turkey</option>
+                  <option value="AE">UAE</option>
+                  <option value="GB">United Kingdom</option>
+                  <option value="US">United States</option>
+                </select>
+                <p className="text-xs text-muted-foreground">Used to give accurate visa &amp; entry advice when planning trips</p>
               </div>
               <div className="flex justify-end">
                 <Button type="submit" size="sm" disabled={savingInfo || handleAvailable === false || checkingHandle} className="h-7 text-xs px-3">

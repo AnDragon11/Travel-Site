@@ -181,12 +181,17 @@ const ProfilePage = () => {
             bio: null, // loaded from profiles table below
           });
 
-          // Also fetch bio from profiles table (ignore error — column may not exist yet)
+          // Also fetch bio + avatar from profiles table (more up-to-date than user_metadata)
           const { data: profileRow } = await supabase
-            .from("profiles").select("bio").eq("id", user.id).maybeSingle();
+            .from("profiles").select("bio, avatar_url").eq("id", user.id).maybeSingle();
           if (cancelled) return;
           if (profileRow) {
-            setProfile(p => p ? { ...p, bio: (profileRow as { bio?: string | null }).bio ?? null } : p);
+            const row = profileRow as { bio?: string | null; avatar_url?: string | null };
+            setProfile(p => p ? {
+              ...p,
+              bio: row.bio ?? null,
+              avatar_url: row.avatar_url ?? p.avatar_url,
+            } : p);
           }
 
           const [trips, bucket] = await Promise.all([loadTrips(), loadBucketList()]);

@@ -103,8 +103,10 @@ const Header = () => {
                 <div className="mt-2 pt-2 border-t border-border/50 space-y-1">
                   {/* User identity row */}
                   <div className="flex items-center gap-2 px-3 py-2">
-                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${user ? "bg-primary text-primary-foreground" : "bg-muted-foreground/20 text-muted-foreground"}`}>
-                      {user ? (user.user_metadata?.display_name || user.email || "").slice(0, 2).toUpperCase() : "G"}
+                    <div className={`w-7 h-7 rounded-full overflow-hidden flex items-center justify-center text-xs font-bold shrink-0 ${user ? "bg-primary text-primary-foreground" : "bg-muted-foreground/20 text-muted-foreground"}`}>
+                      {user?.user_metadata?.avatar_url
+                        ? <img src={user.user_metadata.avatar_url} alt="" className="w-full h-full object-cover" />
+                        : user ? (user.user_metadata?.display_name || user.email || "").slice(0, 2).toUpperCase() : "G"}
                     </div>
                     <span className="text-sm font-medium text-foreground truncate">
                       {user ? (user.user_metadata?.display_name || user.email) : "Guest"}

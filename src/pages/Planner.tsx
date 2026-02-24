@@ -17,12 +17,14 @@ import { useTripContext, TripFormData } from "@/context/TripContext";
 import { submitTripRequest } from "@/services/tripService";
 import { convertItineraryToTrip } from "@/lib/tripConverter";
 import { saveTrip } from "@/services/storageService";
+import { useAuth } from "@/context/AuthContext";
 
 const TOTAL_STEPS = 5;
 
 const Planner = () => {
   const navigate = useNavigate();
-  const { isLoading, setIsLoading, error, setError } = useTripContext();
+  const { isLoading, setIsLoading, setError } = useTripContext();
+  const { user } = useAuth();
   const containerRef = useRef<HTMLDivElement>(null);
   
   // Step state
@@ -74,38 +76,39 @@ const Planner = () => {
 
     let lastScrollTime = 0;
     let scrollAccumulator = 0;
-    const scrollCooldown = 500; // ms between scroll navigations
-    const scrollThreshold = 100; // minimum deltaY to trigger step change
-    const accumulatorDecayTime = 150; // ms before accumulator resets
+    const scrollCooldown = 800; // ms between scroll navigations (normal)
+    const fastScrollCooldown = 300; // ms cooldown for high-velocity flicks
+    const scrollThreshold = 80; // minimum deltaY accumulated to trigger step change
+    const fastScrollThreshold = 400; // single-event deltaY considered "extreme fast"
+    const accumulatorDecayTime = 200; // ms before accumulator resets
     let lastScrollEventTime = 0;
 
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault();
 
       const now = Date.now();
+      const isFastScroll = Math.abs(e.deltaY) > fastScrollThreshold;
+      const cooldown = isFastScroll ? fastScrollCooldown : scrollCooldown;
 
-      // Reset accumulator if too much time has passed since last scroll
+      // During cooldown: drain accumulator so banked scroll doesn't fire immediately after
+      if (now - lastScrollTime < cooldown) {
+        scrollAccumulator = 0;
+        return;
+      }
+
+      // Reset accumulator if user paused scrolling
       if (now - lastScrollEventTime > accumulatorDecayTime) {
         scrollAccumulator = 0;
       }
-
       lastScrollEventTime = now;
 
-      // Accumulate scroll delta
       scrollAccumulator += e.deltaY;
 
-      // Only trigger step change if:
-      // 1. Enough time has passed since last step change (cooldown)
-      // 2. Accumulated scroll exceeds threshold
-      if (now - lastScrollTime < scrollCooldown) return;
-
       if (scrollAccumulator > scrollThreshold && canProceed()) {
-        // Scrolling down - proceed if fields are filled
         lastScrollTime = now;
         scrollAccumulator = 0;
         handleScrollContinue();
       } else if (scrollAccumulator < -scrollThreshold && currentStep > 0) {
-        // Scrolling up - go back
         lastScrollTime = now;
         scrollAccumulator = 0;
         setCurrentStep(prev => Math.max(0, prev - 1));
@@ -223,7 +226,7 @@ const Planner = () => {
         end_date: format(endDate!, "yyyy-MM-dd"),
         travelers,
         preferences: selectedPreferences,
-        passport_country: "US",
+        passport_country: user?.user_metadata?.passport_country || "US",
         group_type: groupType,
         comfort_level: comfortLevel,
       };

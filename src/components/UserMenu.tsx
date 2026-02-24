@@ -44,6 +44,7 @@ const UserMenu = () => {
   const isGuest = !user;
   const displayName = isGuest ? "Guest" : (user?.user_metadata?.display_name || user?.email || "");
   const initials = displayName.slice(0, 2).toUpperCase();
+  const avatarUrl = user?.user_metadata?.avatar_url ?? null;
 
   const handleSignOut = async () => {
     setOpen(false);
@@ -72,8 +73,10 @@ const UserMenu = () => {
               <GuestAvatar className="w-4 h-4 text-muted-foreground" />
             </div>
           ) : (
-            <div className="w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold shrink-0">
-              {initials}
+            <div className="w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold shrink-0 overflow-hidden">
+              {avatarUrl
+                ? <img src={avatarUrl} alt={displayName} className="w-full h-full object-cover" />
+                : initials}
             </div>
           )}
           <span className="max-w-[110px] truncate hidden sm:block">
@@ -91,8 +94,10 @@ const UserMenu = () => {
               <GuestAvatar className="w-5 h-5 text-muted-foreground" />
             </div>
           ) : (
-            <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm font-bold shrink-0">
-              {initials}
+            <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm font-bold shrink-0 overflow-hidden">
+              {avatarUrl
+                ? <img src={avatarUrl} alt={displayName} className="w-full h-full object-cover" />
+                : initials}
             </div>
           )}
           <div className="min-w-0">
