@@ -62,6 +62,8 @@ export interface TripItinerary {
     nights: number;
     total_cost: number;
   };
+  /** True when AI generation failed and a generic placeholder was used instead */
+  isPlaceholder?: boolean;
 }
 
 interface StoredTripData {

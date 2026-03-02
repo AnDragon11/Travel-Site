@@ -204,6 +204,10 @@ const Planner = () => {
 
   const handleDateNext = () => {
     if (!startDate || !endDate) return;
+    if (endDate < startDate) {
+      toast.error("End date must be after the start date");
+      return;
+    }
     setCurrentStep(2);
   };
 
@@ -235,9 +239,24 @@ const Planner = () => {
       setError(null);
 
       const itineraryData = await submitTripRequest(formData);
+
+      if (itineraryData.isPlaceholder) {
+        toast.warning("AI service is temporarily unavailable. Showing a sample itinerary — please refresh and try again.");
+      }
+
       const savedTrip = convertItineraryToTrip(itineraryData);
-      await saveTrip(savedTrip);
-      toast.success("Your trip is ready!");
+
+      try {
+        await saveTrip(savedTrip);
+      } catch (saveErr) {
+        // Trip generation succeeded but saving failed — still navigate so the user sees it
+        const saveMsg = saveErr instanceof Error ? saveErr.message : "Could not save your trip";
+        toast.warning(`Trip generated but not saved: ${saveMsg}`);
+      }
+
+      if (!itineraryData.isPlaceholder) {
+        toast.success("Your trip is ready!");
+      }
       navigate(`/trip/${savedTrip.id}`);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Something went wrong";

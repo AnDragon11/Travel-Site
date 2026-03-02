@@ -70,7 +70,12 @@ const loadLocalTrips = (): SavedTrip[] => {
 };
 
 const saveLocalTrips = (trips: SavedTrip[]) => {
-  localStorage.setItem(LOCAL_KEY, JSON.stringify(trips));
+  try {
+    localStorage.setItem(LOCAL_KEY, JSON.stringify(trips));
+  } catch {
+    // localStorage full or disabled — throw so the caller can surface it
+    throw new Error("Could not save trip: browser storage is full or unavailable.");
+  }
 };
 
 const saveLocalTrip = (trip: SavedTrip) => {
@@ -93,7 +98,7 @@ const loadSupabaseTrips = async (): Promise<SavedTrip[]> => {
     .select("*")
     .neq("source", "sample")
     .order("created_at", { ascending: false });
-  if (error) { console.error("loadTrips:", error.message); return []; }
+  if (error) throw new Error("Failed to load trips. Please check your connection and try again.");
   return data.map(rowToSavedTrip);
 };
 
@@ -182,7 +187,7 @@ export const loadBucketList = async (): Promise<SavedTrip[]> => {
     .select("*")
     .eq("is_bucket_list", true)
     .order("created_at", { ascending: false });
-  if (error) { console.error("loadBucketList:", error.message); return []; }
+  if (error) throw new Error("Failed to load bucket list. Please check your connection and try again.");
   return data.map(rowToSavedTrip);
 };
 
@@ -195,7 +200,7 @@ export const loadPublicTripsForUser = async (userId: string): Promise<SavedTrip[
     .eq("is_public", true)
     .eq("is_bucket_list", false)
     .order("created_at", { ascending: false });
-  if (error) { console.error("loadPublicTripsForUser:", error.message); return []; }
+  if (error) throw new Error("Failed to load trips. Please check your connection and try again.");
   return data.map(rowToSavedTrip);
 };
 

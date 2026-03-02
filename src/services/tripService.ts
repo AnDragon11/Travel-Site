@@ -336,6 +336,7 @@ const generatePlaceholder = (formData: TripFormData): TripItinerary => {
       nights: numDays - 1,
       total_cost: hotelCost,
     },
+    isPlaceholder: true,
   };
 
   return ensureTransportBookends(placeholder, formData);
@@ -427,13 +428,9 @@ const submitViaSupabase = (formData: TripFormData, userId: string | null): Promi
 
         if (error || !data) {
           clearTimeout(timeoutId);
-          // Supabase insert failed — fall back to direct n8n call for guests
-          if (userId === null) {
-            console.warn("Guest Supabase insert failed, falling back to direct n8n call:", error?.message);
-            submitDirectToN8n(formData).then(resolve).catch(reject);
-          } else {
-            reject(new Error(error?.message || "Failed to create itinerary request"));
-          }
+          // Supabase insert failed — fall back to direct n8n call for both guests and auth users
+          console.warn("Supabase insert failed, falling back to direct n8n call:", error?.message);
+          submitDirectToN8n(formData).then(resolve).catch(reject);
           return;
         }
 

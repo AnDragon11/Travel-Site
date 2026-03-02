@@ -3,7 +3,7 @@ import { useNavigate, Link } from "react-router-dom";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
-import { MapPin, Heart, Compass, Filter, Search, X } from "lucide-react";
+import { MapPin, Heart, Compass, Filter, Search, X, AlertCircle, Loader2 } from "lucide-react";
 import { SavedTrip } from "@/lib/tripTypes";
 import { cn } from "@/lib/utils";
 import { loadTrips, saveTrip, deleteTrip } from "@/services/storageService";
@@ -25,17 +25,24 @@ const Explore = () => {
   const [savedTrips, setSavedTrips] = useState<SavedTrip[]>([]);
   const [dbPublicTrips, setDbPublicTrips] = useState<SavedTrip[]>([]);
   const [tripAuthors, setTripAuthors] = useState<Record<string, { display_name: string | null; handle: string | null; avatar_url: string | null }>>({});
+  const [loadingTrips, setLoadingTrips] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadTrips().then(setSavedTrips);
-    // Load real public trips + author info from DB
+  const loadPublicTrips = () => {
+    setLoadingTrips(true);
+    setLoadError(null);
+    loadTrips().then(setSavedTrips).catch(() => {/* own trips failing is non-critical */});
     supabase
       .from("trips")
       .select("*, profiles(display_name, handle, avatar_url)")
       .eq("is_public", true)
       .order("created_at", { ascending: false })
-      .then(({ data }) => {
-        if (!data) return;
+      .then(({ data, error }) => {
+        setLoadingTrips(false);
+        if (error || !data) {
+          setLoadError("Could not load trips. Check your connection and try again.");
+          return;
+        }
         const authors: typeof tripAuthors = {};
         setDbPublicTrips(data.map(row => {
           const profile = row.profiles as { display_name: string | null; handle: string | null; avatar_url: string | null } | null;
@@ -59,6 +66,10 @@ const Explore = () => {
         }));
         setTripAuthors(authors);
       });
+  };
+
+  useEffect(() => {
+    loadPublicTrips();
   }, []);
 
   // A trip is favorited if the user owns it and has isFavorite=true,
@@ -347,7 +358,18 @@ const Explore = () => {
           )}
 
           {/* Trip grid — full width */}
-          {filteredTrips.length > 0 ? (
+          {loadingTrips ? (
+            <div className="flex items-center justify-center py-20">
+              <Loader2 className="w-6 h-6 text-primary animate-spin" />
+            </div>
+          ) : loadError ? (
+            <div className="bg-card rounded-xl border border-destructive/30 p-12 text-center">
+              <AlertCircle className="w-8 h-8 text-destructive mx-auto mb-3" />
+              <h3 className="font-semibold text-foreground mb-1">Failed to load trips</h3>
+              <p className="text-sm text-muted-foreground mb-4">{loadError}</p>
+              <Button onClick={loadPublicTrips} variant="outline" size="sm">Try again</Button>
+            </div>
+          ) : filteredTrips.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
               {filteredTrips.map(trip => <TripCard key={trip.id} trip={trip} />)}
             </div>
@@ -355,8 +377,10 @@ const Explore = () => {
             <div className="bg-card rounded-xl border border-border/50 p-12 text-center">
               <Compass className="w-8 h-8 text-muted-foreground mx-auto mb-3" />
               <h3 className="font-semibold text-foreground mb-1">No trips found</h3>
-              <p className="text-sm text-muted-foreground mb-4">Try adjusting your filters</p>
-              <Button onClick={clearFilters} variant="outline" size="sm">Clear Filters</Button>
+              <p className="text-sm text-muted-foreground mb-4">
+                {hasActiveFilters ? "Try adjusting your filters" : "Be the first to share a trip!"}
+              </p>
+              {hasActiveFilters && <Button onClick={clearFilters} variant="outline" size="sm">Clear Filters</Button>}
             </div>
           )}
 

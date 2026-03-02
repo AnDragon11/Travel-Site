@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -9,6 +9,29 @@ import { toast } from "sonner";
 import { CheckCircle, XCircle, Loader } from "lucide-react";
 
 const HANDLE_RE = /^[a-z0-9_]+$/i;
+
+/** Convert a display name to a valid handle candidate */
+const displayNameToHandle = (name: string): string =>
+  name
+    .toLowerCase()
+    .replace(/\s+/g, "_")          // spaces → underscores
+    .replace(/[^a-z0-9_]/g, "")   // strip invalid chars
+    .replace(/_+/g, "_")           // collapse multiple underscores
+    .replace(/^_+|_+$/g, "")       // trim leading/trailing underscores
+    .slice(0, 30);                  // max length
+
+const checkAvailability = async (h: string): Promise<boolean> => {
+  try {
+    const rpcPromise = supabase.rpc("is_handle_available", { p_handle: h });
+    const timeoutPromise = new Promise<{ data: null }>(resolve =>
+      setTimeout(() => resolve({ data: null }), 5000)
+    );
+    const result = await Promise.race([rpcPromise, timeoutPromise]);
+    return result.data ?? true; // timeout → optimistically assume available
+  } catch {
+    return true; // network error → optimistic
+  }
+};
 
 const GoogleIcon = () => (
   <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
@@ -29,29 +52,84 @@ const Signup = () => {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
+  // Whether the user has manually typed in the handle field
+  const [handleManuallyEdited, setHandleManuallyEdited] = useState(false);
+
   // Handle availability state
   const [handleAvailable, setHandleAvailable] = useState<boolean | null>(null);
   const [checkingHandle, setCheckingHandle] = useState(false);
 
-  // Debounced handle availability check
+  // Prevents re-running the availability check after we auto-set the handle
+  const skipNextCheck = useRef(false);
+
+  // Auto-generate handle from display name (unless user has manually edited it)
   useEffect(() => {
+    if (handleManuallyEdited) return;
+    const generated = displayNameToHandle(displayName);
+    skipNextCheck.current = true; // the upcoming handle change came from us, not user
+    setHandle(generated);
+    setHandleAvailable(null);
+  }, [displayName, handleManuallyEdited]);
+
+  // Debounced handle availability check + auto-increment when taken
+  useEffect(() => {
+    // Skip if this change was triggered by our own auto-set
+    if (skipNextCheck.current) {
+      skipNextCheck.current = false;
+      setCheckingHandle(false);
+      return;
+    }
+
     if (handle.length < 3 || !HANDLE_RE.test(handle)) {
       setHandleAvailable(null);
       setCheckingHandle(false);
       return;
     }
+
     setCheckingHandle(true);
     setHandleAvailable(null);
+
     const timer = setTimeout(async () => {
-      const { data } = await supabase.rpc("is_handle_available", { p_handle: handle });
-      setHandleAvailable(data ?? false);
+      const available = await checkAvailability(handle);
+
+      if (available) {
+        setHandleAvailable(true);
+        setCheckingHandle(false);
+        return;
+      }
+
+      // Handle is taken — if it was auto-generated, try appending 1..9
+      if (!handleManuallyEdited) {
+        const base = handle.replace(/\d+$/, ""); // strip any existing trailing number
+        let resolved = false;
+        for (let i = 1; i <= 9; i++) {
+          const candidate = `${base}${i}`;
+          if (candidate.length > 30) break;
+          const candidateAvailable = await checkAvailability(candidate);
+          if (candidateAvailable) {
+            skipNextCheck.current = true; // don't re-check after this setHandle
+            setHandle(candidate);
+            setHandleAvailable(true);
+            resolved = true;
+            break;
+          }
+        }
+        if (!resolved) {
+          setHandleAvailable(false);
+        }
+      } else {
+        setHandleAvailable(false);
+      }
+
       setCheckingHandle(false);
     }, 400);
-    return () => clearTimeout(timer);
-  }, [handle]);
 
-  const handleInput = (value: string) => {
-    // Enforce alphanumeric + underscore, lowercase, strip spaces
+    return () => clearTimeout(timer);
+  }, [handle, handleManuallyEdited]);
+
+  /** Called when the user manually types in the handle field */
+  const onHandleInput = (value: string) => {
+    setHandleManuallyEdited(true);
     setHandle(value.toLowerCase().replace(/[^a-z0-9_]/g, ""));
   };
 
@@ -67,13 +145,14 @@ const Signup = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!displayName.trim()) { toast.error("Display name is required"); return; }
     if (handle.length < 3) { toast.error("Handle must be at least 3 characters"); return; }
     if (!HANDLE_RE.test(handle)) { toast.error("Handle can only contain letters, numbers and underscores"); return; }
     if (handleAvailable === false) { toast.error("That handle is already taken"); return; }
     if (password.length < 6) { toast.error("Password must be at least 6 characters"); return; }
 
     setLoading(true);
-    const { error } = await signUp(email, password, displayName, handle);
+    const { error } = await signUp(email, password, displayName.trim(), handle);
     setLoading(false);
 
     if (error) {
@@ -98,10 +177,29 @@ const Signup = () => {
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-5">
-              {/* Handle */}
+              {/* Display Name — first and required */}
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1.5">Display Name</label>
+                <input
+                  type="text"
+                  required
+                  value={displayName}
+                  onChange={e => setDisplayName(e.target.value)}
+                  placeholder="Your name"
+                  autoComplete="name"
+                  className="w-full px-4 py-2.5 rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 transition"
+                />
+              </div>
+
+              {/* Handle — auto-filled from display name */}
               <div>
                 <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-sm font-medium text-foreground">Handle</label>
+                  <label className="text-sm font-medium text-foreground">
+                    Handle
+                    {!handleManuallyEdited && handle.length > 0 && (
+                      <span className="ml-1.5 text-xs font-normal text-muted-foreground">(auto-filled)</span>
+                    )}
+                  </label>
                   <div className="flex items-center">{handleStatus()}</div>
                 </div>
                 <div className="flex items-center rounded-lg border border-border bg-background focus-within:ring-2 focus-within:ring-primary/50 transition overflow-hidden">
@@ -110,28 +208,14 @@ const Signup = () => {
                     type="text"
                     required
                     value={handle}
-                    onChange={e => handleInput(e.target.value)}
+                    onChange={e => onHandleInput(e.target.value)}
                     placeholder="yourhandle"
                     autoComplete="username"
                     maxLength={30}
                     className="flex-1 py-2.5 pr-4 bg-transparent text-foreground placeholder:text-muted-foreground focus:outline-none"
                   />
                 </div>
-                <p className="text-xs text-muted-foreground mt-1">This is how others will find you. Letters, numbers and _ only.</p>
-              </div>
-
-              {/* Display name */}
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-1.5">
-                  Display Name <span className="text-muted-foreground font-normal">(optional)</span>
-                </label>
-                <input
-                  type="text"
-                  value={displayName}
-                  onChange={e => setDisplayName(e.target.value)}
-                  placeholder="Your name"
-                  className="w-full px-4 py-2.5 rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 transition"
-                />
+                <p className="text-xs text-muted-foreground mt-1">This is how others will find you. Edit it freely.</p>
               </div>
 
               {/* Email */}
@@ -162,7 +246,7 @@ const Signup = () => {
                 />
               </div>
 
-              <Button type="submit" disabled={loading || handleAvailable === false || checkingHandle} className="w-full">
+              <Button type="submit" disabled={loading || handleAvailable === false} className="w-full">
                 {loading ? "Creating account…" : "Create Account"}
               </Button>
             </form>
