@@ -64,9 +64,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
               updates.display_name = session.user.user_metadata.full_name;
             }
 
-            // If DB has a different avatar (e.g. manually uploaded), it takes priority over Google's
             if (profile?.avatar_url && profile.avatar_url !== session.user.user_metadata?.avatar_url) {
+              // DB has a manually-uploaded avatar → push it to auth metadata
               updates.avatar_url = profile.avatar_url;
+            } else if (!profile?.avatar_url && session.user.user_metadata?.avatar_url) {
+              // First OAuth sign-in: provider picture isn't in DB yet → persist it
+              await supabase.from("profiles").update({
+                avatar_url: session.user.user_metadata.avatar_url,
+                updated_at: new Date().toISOString(),
+              }).eq("id", session.user!.id);
             }
 
             if (Object.keys(updates).length > 0) {

@@ -399,11 +399,16 @@ const submitDirectToN8n = async (formData: TripFormData): Promise<TripItinerary>
 const submitViaSupabase = (formData: TripFormData, userId: string | null): Promise<TripItinerary> => {
   return new Promise((resolve, reject) => {
     let channel: ReturnType<typeof supabase.channel> | null = null;
+    let pollId: ReturnType<typeof setInterval> | null = null;
 
     const cleanup = () => {
       if (channel) {
         supabase.removeChannel(channel);
         channel = null;
+      }
+      if (pollId) {
+        clearInterval(pollId);
+        pollId = null;
       }
     };
 
@@ -470,9 +475,27 @@ const submitViaSupabase = (formData: TripFormData, userId: string | null): Promi
           .subscribe((status, err) => {
             console.log("Realtime subscription status:", status, err ?? "");
             if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-              clearTimeout(timeoutId);
-              cleanup();
-              reject(new Error(`Realtime subscription failed: ${status}`));
+              console.warn(`Realtime ${status} — falling back to DB polling`);
+              cleanup(); // remove the broken channel
+              // Poll every 3 s until n8n writes the result (outer timeout still applies)
+              pollId = setInterval(async () => {
+                const { data: row } = await supabase
+                  .from("itinerary_requests")
+                  .select("status, result, error_message")
+                  .eq("id", requestId)
+                  .single();
+                if (!row) return;
+                if (row.status === "completed" && row.result) {
+                  clearTimeout(timeoutId);
+                  cleanup();
+                  try { resolve(parseWebhookResponse(row.result, formData)); }
+                  catch (e) { reject(e instanceof Error ? e : new Error("Failed to parse itinerary")); }
+                } else if (row.status === "error") {
+                  clearTimeout(timeoutId);
+                  cleanup();
+                  reject(new Error(row.error_message || "Failed to generate itinerary"));
+                }
+              }, 3000);
             }
           });
       } catch (err) {

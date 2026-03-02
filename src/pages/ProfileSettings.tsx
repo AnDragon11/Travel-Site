@@ -70,6 +70,7 @@ const Profile = () => {
       setHandle(user.user_metadata?.handle ?? "");
       setPassportCountry(user.user_metadata?.passport_country ?? "");
       setPhone(user.phone ?? "");
+      setAvatarUrl(user.user_metadata?.avatar_url ?? null);
     }
   }, [user]);
 
