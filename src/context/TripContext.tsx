@@ -9,6 +9,7 @@ export interface TripFormData {
   start_date: string;
   end_date: string;
   travelers: number;
+  kids: number;
   preferences: string[];
   passport_country: string;
   group_type: string;

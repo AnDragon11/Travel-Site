@@ -9,7 +9,6 @@ import { AuthProvider } from "@/context/AuthContext";
 import { PreferencesProvider } from "@/context/PreferencesContext";
 import { ThemeProvider } from "next-themes";
 import Planner from "./pages/Planner";
-import MyTrips from "./pages/MyTrips";
 import ProfileSettings from "./pages/ProfileSettings";
 import ProfilePage from "./pages/ProfilePage";
 import { Navigate, useParams } from "react-router-dom";
@@ -78,7 +77,6 @@ const App = () => (
                   <Route path="/profile" element={<ProfilePage />} />
                   <Route path="/profile-settings" element={<ProtectedRoute><ProfileSettings /></ProtectedRoute>} />
                   <Route path="/user/:handle" element={<ProfilePage />} />
-                  <Route path="/my-trips" element={<Navigate to="/profile" replace />} />
                   <Route path="/trip" element={<TripBuilder />} />
                   <Route path="/trip/:id" element={<TripBuilder />} />
                   <Route path="/builder" element={<Navigate to="/trip" replace />} />

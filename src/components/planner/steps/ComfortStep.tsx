@@ -4,8 +4,6 @@ import BudgetSlider from "@/components/BudgetSlider";
 
 interface ComfortStepProps {
   comfortLevel: number;
-  nights: number;
-  travelers: number;
   onComfortChange: (level: number) => void;
   onSubmit: () => void;
   isSubmitting: boolean;
@@ -13,8 +11,6 @@ interface ComfortStepProps {
 
 const ComfortStep = ({
   comfortLevel,
-  nights,
-  travelers,
   onComfortChange,
   onSubmit,
   isSubmitting,
@@ -34,8 +30,6 @@ const ComfortStep = ({
         <BudgetSlider
           value={comfortLevel}
           onChange={onComfortChange}
-          nights={nights}
-          travelers={travelers}
         />
       </div>
 

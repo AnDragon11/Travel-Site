@@ -7,66 +7,24 @@ interface ExperienceLevel {
   emoji: string;
   shortDesc: string;
   priceIndicator: string;
-  multiplier: number;
 }
 
 const experienceLevels: ExperienceLevel[] = [
-  {
-    id: 1,
-    name: "Nomad",
-    emoji: "🎒",
-    shortDesc: "Hostels & street food",
-    priceIndicator: "$",
-    multiplier: 50,
-  },
-  {
-    id: 2,
-    name: "Smart",
-    emoji: "💼",
-    shortDesc: "Budget hotels",
-    priceIndicator: "$$",
-    multiplier: 100,
-  },
-  {
-    id: 3,
-    name: "Balanced",
-    emoji: "⚖️",
-    shortDesc: "Mid-range comfort",
-    priceIndicator: "$$$",
-    multiplier: 180,
-  },
-  {
-    id: 4,
-    name: "Comfortable",
-    emoji: "🏨",
-    shortDesc: "Quality stays",
-    priceIndicator: "$$$$",
-    multiplier: 300,
-  },
-  {
-    id: 5,
-    name: "Luxurious",
-    emoji: "💎",
-    shortDesc: "5-star experience",
-    priceIndicator: "$$$$$",
-    multiplier: 500,
-  },
+  { id: 1, name: "Nomad",       emoji: "🎒", shortDesc: "Hostels & street food", priceIndicator: "$"     },
+  { id: 2, name: "Smart",       emoji: "💼", shortDesc: "Budget hotels",          priceIndicator: "$$"    },
+  { id: 3, name: "Balanced",    emoji: "⚖️", shortDesc: "Mid-range comfort",      priceIndicator: "$$$"   },
+  { id: 4, name: "Comfortable", emoji: "🏨", shortDesc: "Quality stays",          priceIndicator: "$$$$"  },
+  { id: 5, name: "Luxurious",   emoji: "💎", shortDesc: "5-star experience",      priceIndicator: "$$$$$" },
 ];
 
 interface BudgetSliderProps {
   value: number;
   onChange: (value: number) => void;
-  nights: number;
-  travelers: number;
 }
 
-const BudgetSlider = ({ value, onChange, nights, travelers }: BudgetSliderProps) => {
+const BudgetSlider = ({ value, onChange }: BudgetSliderProps) => {
   const [isAnimating, setIsAnimating] = useState(false);
   const currentLevel = experienceLevels.find((l) => l.id === value) || experienceLevels[2];
-
-  const baseCost = nights * currentLevel.multiplier * travelers;
-  const minCost = Math.round(baseCost * 0.85);
-  const maxCost = Math.round(baseCost * 1.15);
 
   const handleSliderChange = (newValue: number) => {
     if (newValue !== value) {
@@ -161,15 +119,6 @@ const BudgetSlider = ({ value, onChange, nights, travelers }: BudgetSliderProps)
         </div>
       </div>
 
-      {/* Estimated Cost - Compact */}
-      <div className="text-center">
-        <p className="text-lg md:text-xl font-semibold text-foreground">
-          ${minCost.toLocaleString()} – ${maxCost.toLocaleString()}
-        </p>
-        <p className="text-xs text-muted-foreground mt-0.5">
-          est. total • {nights} nights • {travelers} {travelers === 1 ? 'traveler' : 'travelers'}
-        </p>
-      </div>
     </div>
   );
 };

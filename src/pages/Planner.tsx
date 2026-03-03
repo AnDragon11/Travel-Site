@@ -37,6 +37,7 @@ const Planner = () => {
   const [startDate, setStartDate] = useState<Date | undefined>();
   const [endDate, setEndDate] = useState<Date | undefined>();
   const [travelers, setTravelers] = useState(2);
+  const [kids, setKids] = useState(0);
   const [selectedPreferences, setSelectedPreferences] = useState<string[]>([]);
   const [groupType, setGroupType] = useState("couple");
   const [groupTypeManuallySet, setGroupTypeManuallySet] = useState(false);
@@ -117,7 +118,7 @@ const Planner = () => {
 
     container.addEventListener('wheel', handleWheel, { passive: false });
     return () => container.removeEventListener('wheel', handleWheel);
-  }, [currentStep, departureCity, destinationCity, startDate, endDate, travelers, groupType, selectedPreferences, comfortLevel, stepSubmitting]);
+  }, [currentStep, departureCity, destinationCity, startDate, endDate, travelers, kids, groupType, selectedPreferences, comfortLevel, stepSubmitting]);
 
   // Handle touch swipe to navigate steps (mobile)
   useEffect(() => {
@@ -158,7 +159,7 @@ const Planner = () => {
       container.removeEventListener('touchstart', handleTouchStart);
       container.removeEventListener('touchend', handleTouchEnd);
     };
-  }, [currentStep, departureCity, destinationCity, startDate, endDate, travelers, groupType, selectedPreferences, comfortLevel, stepSubmitting]);
+  }, [currentStep, departureCity, destinationCity, startDate, endDate, travelers, kids, groupType, selectedPreferences, comfortLevel, stepSubmitting]);
 
   // Smart defaults for group type based on traveler count
   const getDefaultGroupType = (count: number): string => {
@@ -171,7 +172,15 @@ const Planner = () => {
     const clampedCount = Math.max(1, Math.min(10, newCount));
     setTravelers(clampedCount);
     if (!groupTypeManuallySet) {
-      setGroupType(getDefaultGroupType(clampedCount));
+      setGroupType(kids >= 1 ? "family" : getDefaultGroupType(clampedCount));
+    }
+  };
+
+  const handleKidsChange = (newCount: number) => {
+    const clampedCount = Math.max(0, Math.min(10, newCount));
+    setKids(clampedCount);
+    if (!groupTypeManuallySet) {
+      setGroupType(clampedCount >= 1 ? "family" : getDefaultGroupType(travelers));
     }
   };
 
@@ -229,6 +238,7 @@ const Planner = () => {
         start_date: format(startDate!, "yyyy-MM-dd"),
         end_date: format(endDate!, "yyyy-MM-dd"),
         travelers,
+        kids,
         preferences: selectedPreferences,
         passport_country: user?.user_metadata?.passport_country || "US",
         group_type: groupType,
@@ -371,8 +381,10 @@ const Planner = () => {
             >
               <TravelersStep
                 travelers={travelers}
+                kids={kids}
                 groupType={groupType}
                 onTravelersChange={handleTravelersChange}
+                onKidsChange={handleKidsChange}
                 onGroupTypeChange={handleGroupTypeChange}
                 onNext={handleTravelersNext}
                 isSubmitting={stepSubmitting && currentStep === 2}
@@ -405,8 +417,6 @@ const Planner = () => {
             >
               <ComfortStep
                 comfortLevel={comfortLevel}
-                nights={nights}
-                travelers={travelers}
                 onComfortChange={setComfortLevel}
                 onSubmit={handleFinalSubmit}
                 isSubmitting={stepSubmitting && currentStep === 4}

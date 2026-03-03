@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
@@ -14,8 +14,10 @@ type TabType = 'all' | 'future' | 'past' | 'favorites';
 
 const MyTrips = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [trips, setTrips] = useState<SavedTrip[]>([]);
-  const [activeTab, setActiveTab] = useState<TabType>('all');
+  const initialTab = (searchParams.get('tab') as TabType) ?? 'all';
+  const [activeTab, setActiveTab] = useState<TabType>(initialTab);
   const [showMap, setShowMap] = useState(true);
 
   const loadAllTrips = async () => {

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams, Link } from "react-router-dom";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
@@ -131,6 +131,7 @@ const ProfilePage = () => {
   const { handle } = useParams<{ handle?: string }>();
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   // Is this the viewer's own profile?
   const isOwn = !handle;
@@ -147,7 +148,7 @@ const ProfilePage = () => {
   const [bucketList, setBucketList] = useState<SavedTrip[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
-  const [tab, setTab] = useState<"diary" | "bucket">("diary");
+  const [tab, setTab] = useState<"diary" | "bucket">(searchParams.get("tab") === "bucket" ? "bucket" : "diary");
 
   // ── Load profile + trips ──────────────────────────────────────────
   useEffect(() => {

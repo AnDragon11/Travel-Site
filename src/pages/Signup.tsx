@@ -210,7 +210,7 @@ const Signup = () => {
                     value={handle}
                     onChange={e => onHandleInput(e.target.value)}
                     placeholder="yourhandle"
-                    autoComplete="username"
+                    autoComplete="off"
                     maxLength={30}
                     className="flex-1 py-2.5 pr-4 bg-transparent text-foreground placeholder:text-muted-foreground focus:outline-none"
                   />

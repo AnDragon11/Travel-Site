@@ -571,7 +571,7 @@ const TripBuilder = () => {
       const updated = { ...trip, updatedAt: new Date().toISOString() };
       await saveToStorage(updated);
       toast.success("Trip saved!");
-      navigate("/profile");
+      navigate("/profile?tab=bucket");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to save trip");
     }

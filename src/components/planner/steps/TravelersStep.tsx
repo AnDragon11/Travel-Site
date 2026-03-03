@@ -1,4 +1,4 @@
-import { Users, ArrowRight, Loader2 } from "lucide-react";
+import { Users, Baby, ArrowRight, Loader2 } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -13,17 +13,65 @@ const groupTypes = [
 
 interface TravelersStepProps {
   travelers: number;
+  kids: number;
   groupType: string;
   onTravelersChange: (count: number) => void;
+  onKidsChange: (count: number) => void;
   onGroupTypeChange: (type: string) => void;
   onNext: () => void;
   isSubmitting: boolean;
 }
 
+const CounterRow = ({
+  label,
+  icon: Icon,
+  value,
+  min,
+  max,
+  onChange,
+}: {
+  label: string;
+  icon: React.ElementType;
+  value: number;
+  min: number;
+  max: number;
+  onChange: (v: number) => void;
+}) => (
+  <div className="space-y-3">
+    <Label className="text-base font-semibold flex items-center gap-2 justify-center">
+      <Icon className="w-5 h-5 text-primary" />
+      {label}
+    </Label>
+    <div className="flex items-center justify-center gap-6">
+      <Button
+        type="button"
+        variant="outline"
+        size="icon"
+        onClick={() => onChange(Math.max(min, value - 1))}
+        className="h-14 w-14 text-2xl rounded-full"
+      >
+        −
+      </Button>
+      <span className="text-4xl font-bold w-16 text-center">{value}</span>
+      <Button
+        type="button"
+        variant="outline"
+        size="icon"
+        onClick={() => onChange(Math.min(max, value + 1))}
+        className="h-14 w-14 text-2xl rounded-full"
+      >
+        +
+      </Button>
+    </div>
+  </div>
+);
+
 const TravelersStep = ({
   travelers,
+  kids,
   groupType,
   onTravelersChange,
+  onKidsChange,
   onGroupTypeChange,
   onNext,
   isSubmitting,
@@ -40,32 +88,23 @@ const TravelersStep = ({
       </div>
 
       <div className="max-w-md mx-auto space-y-8">
-        <div className="space-y-4">
-          <Label className="text-base font-semibold flex items-center gap-2 justify-center">
-            <Users className="w-5 h-5 text-primary" />
-            Number of Travelers
-          </Label>
-          <div className="flex items-center justify-center gap-6">
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              onClick={() => onTravelersChange(Math.max(1, travelers - 1))}
-              className="h-14 w-14 text-2xl rounded-full"
-            >
-              −
-            </Button>
-            <span className="text-4xl font-bold w-16 text-center">{travelers}</span>
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              onClick={() => onTravelersChange(Math.min(10, travelers + 1))}
-              className="h-14 w-14 text-2xl rounded-full"
-            >
-              +
-            </Button>
-          </div>
+        <div className="grid grid-cols-2 gap-6">
+          <CounterRow
+            label="Adults"
+            icon={Users}
+            value={travelers}
+            min={1}
+            max={10}
+            onChange={onTravelersChange}
+          />
+          <CounterRow
+            label="Children"
+            icon={Baby}
+            value={kids}
+            min={0}
+            max={10}
+            onChange={onKidsChange}
+          />
         </div>
 
         <div className="space-y-4">

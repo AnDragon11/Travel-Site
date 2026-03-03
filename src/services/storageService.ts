@@ -92,10 +92,11 @@ const deleteLocalTrip = (id: string) => {
 
 // ─── Supabase functions (authenticated) ──────────────────────────────
 
-const loadSupabaseTrips = async (): Promise<SavedTrip[]> => {
+const loadSupabaseTrips = async (userId: string): Promise<SavedTrip[]> => {
   const { data, error } = await supabase
     .from("trips")
     .select("*")
+    .eq("user_id", userId)
     .neq("source", "sample")
     .order("created_at", { ascending: false });
   if (error) throw new Error("Failed to load trips. Please check your connection and try again.");
@@ -112,7 +113,7 @@ const saveSupabaseTrip = async (trip: SavedTrip, userId: string): Promise<void> 
     travelers: trip.travelers,
     days: trip.days as unknown as Json,
     is_favorite: trip.isFavorite ?? false,
-    is_public: trip.isPublic ?? true,
+    is_public: trip.isPublic ?? false,
     is_bucket_list: trip.isBucketList ?? false,
     rating: trip.rating ?? null,
     review: trip.review ?? null,
@@ -139,7 +140,7 @@ const getSessionUser = async () => {
 
 export const loadTrips = async (): Promise<SavedTrip[]> => {
   const user = await getSessionUser();
-  if (user) return loadSupabaseTrips();
+  if (user) return loadSupabaseTrips(user.id);
   return loadLocalTrips();
 };
 
@@ -185,6 +186,7 @@ export const loadBucketList = async (): Promise<SavedTrip[]> => {
   const { data, error } = await supabase
     .from("trips")
     .select("*")
+    .eq("user_id", user.id)
     .eq("is_bucket_list", true)
     .order("created_at", { ascending: false });
   if (error) throw new Error("Failed to load bucket list. Please check your connection and try again.");
