@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  loadTrips, loadBucketList, loadPublicTripsForUser,
+  loadTrips, loadPublicTripsForUser,
   copyToBucketList, setTripPublic, deleteTrip, saveTrip,
 } from "@/services/storageService";
 import { SavedTrip } from "@/lib/tripTypes";
@@ -203,10 +203,11 @@ const ProfilePage = () => {
             } : p);
           }
 
-          const [trips, bucket] = await Promise.all([loadTrips(), loadBucketList()]);
+          // loadTrips() returns all accessible trips (owned + collaborated) via SECURITY DEFINER RPC
+          const trips = await loadTrips();
           if (cancelled) return;
           setDiaryTrips(trips.filter(t => !t.isBucketList));
-          setBucketList(bucket);
+          setBucketList(trips.filter(t => t.isBucketList));
         } else {
           // Other user's profile
           const { data: profileRow, error } = await supabase
@@ -286,11 +287,8 @@ const ProfilePage = () => {
     try {
       await acceptInvite(invite.id);
       setPendingInvites(prev => prev.filter(i => i.id !== invite.id));
-      toast.success(`Joined "${invite.trip?.title}"`);
-      // Refresh trips so the collaborated trip appears
-      const [trips, bucket] = await Promise.all([loadTrips(), loadBucketList()]);
-      setDiaryTrips(trips.filter(t => !t.isBucketList));
-      setBucketList(bucket);
+      toast.success(`Joined "${invite.trip?.title ?? "trip"}"`);
+      navigate(`/trip/${invite.trip_id}`);
     } catch { toast.error("Failed to accept invite"); }
     finally { setRespondingId(null); }
   };

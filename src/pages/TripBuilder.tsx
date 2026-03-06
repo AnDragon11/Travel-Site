@@ -16,7 +16,7 @@ import { cn } from "@/lib/utils";
 import {
   Plane, Hotel, Utensils, Camera, MapPin, Clock, Plus, Trash2, Pencil, Save,
   Ticket, Coffee, ShoppingBag, Bus, Car, Train, Footprints, ImagePlus,
-  Calendar, Users, ArrowLeft, GripVertical, Heart, Tag, Share2, LogOut,
+  Calendar, Users, ArrowLeft, GripVertical, Heart, Tag, Share2, LogOut, Link2,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -85,7 +85,7 @@ export interface BuilderTrip {
 }
 
 // ─── Storage ────────────────────────────────────────────────────────
-import { loadTrips, saveTrip as saveToStorage } from "@/services/storageService";
+import { loadTrips, saveTrip as saveToStorage, rowToSavedTrip } from "@/services/storageService";
 import { SavedTrip } from "@/lib/tripTypes";
 import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -434,7 +434,7 @@ const TripBuilder = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const location = useLocation();
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const fromExplore = (location.state as { from?: string } | null)?.from === 'explore';
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(1000);
@@ -462,12 +462,19 @@ const TripBuilder = () => {
       setTrip(stateTrip);
       return;
     }
-    if (!id) return;
-    loadTrips().then(trips => {
+    if (!id || authLoading) return;
+    loadTrips().then(async trips => {
       const found = trips.find(t => t.id === id);
-      if (found) setTrip(found);
+      if (found) { setTrip(found); return; }
+      // Not in user's trips — try fetching directly (shared link, public trip)
+      const { data } = await supabase.from("trips").select("*").eq("id", id).maybeSingle();
+      if (data) {
+        setTrip(rowToSavedTrip(data as Parameters<typeof rowToSavedTrip>[0]));
+      } else if (!user) {
+        navigate(`/login?redirect=/trip/${id}`, { replace: true });
+      }
     });
-  }, [id]);
+  }, [id, authLoading]);
 
   // Determine role and load collaborators when editing an existing trip
   useEffect(() => {
@@ -625,6 +632,13 @@ const TripBuilder = () => {
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to save trip");
     }
+  };
+
+  const handleCopyLink = () => {
+    const url = `${window.location.origin}/trip/${id}`;
+    navigator.clipboard.writeText(url)
+      .then(() => toast.success("Link copied to clipboard!"))
+      .catch(() => toast.error("Could not copy link"));
   };
 
   const handleLeaveTrip = async () => {
@@ -811,16 +825,25 @@ const TripBuilder = () => {
                     <p className="text-2xl font-bold">€{totalCost.toLocaleString()}</p>
                   </div>
 
-                  {/* Owner: share + save */}
+                  {/* Owner: share (split button) */}
                   {isOwner && id && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="gap-1.5 text-primary-foreground/80 hover:text-primary-foreground hover:bg-primary-foreground/10"
-                      onClick={() => setShareOpen(true)}
-                    >
-                      <Share2 className="w-4 h-4" /> Share
-                    </Button>
+                    <div className="flex items-center rounded-md overflow-hidden border border-primary-foreground/20 text-sm shrink-0">
+                      <button
+                        onClick={() => setShareOpen(true)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-primary-foreground/80 hover:text-primary-foreground hover:bg-primary-foreground/10 transition-colors"
+                        title="Invite collaborators"
+                      >
+                        <Users className="w-3.5 h-3.5" /> Collaborate
+                      </button>
+                      <div className="w-px self-stretch bg-primary-foreground/20" />
+                      <button
+                        onClick={handleCopyLink}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-primary-foreground/80 hover:text-primary-foreground hover:bg-primary-foreground/10 transition-colors"
+                        title="Copy share link"
+                      >
+                        <Link2 className="w-3.5 h-3.5" /> Share Link
+                      </button>
+                    </div>
                   )}
 
                   <Button variant="secondary" size="sm" className="gap-1.5" onClick={saveTrip}>

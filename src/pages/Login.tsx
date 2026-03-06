@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useNavigate, useLocation } from "react-router-dom";
+import { Link, useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
@@ -19,7 +19,8 @@ const Login = () => {
   const { signIn, signInWithGoogle } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const from = (location.state as { from?: string })?.from ?? "/profile";
+  const [searchParams] = useSearchParams();
+  const from = searchParams.get("redirect") || (location.state as { from?: string })?.from || "/profile";
 
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");

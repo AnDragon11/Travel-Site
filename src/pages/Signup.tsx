@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import Header from "@/components/Header";
@@ -45,6 +45,8 @@ const GoogleIcon = () => (
 const Signup = () => {
   const { signUp, signInWithGoogle } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const redirectParam = searchParams.get("redirect");
 
   const [displayName, setDisplayName] = useState("");
   const [handle, setHandle] = useState("");
@@ -159,7 +161,7 @@ const Signup = () => {
       toast.error(error.message);
     } else {
       toast.success("Account created! Check your email to confirm.");
-      navigate("/login");
+      navigate(redirectParam ? `/login?redirect=${encodeURIComponent(redirectParam)}` : "/login");
     }
   };
 

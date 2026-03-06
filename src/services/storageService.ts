@@ -11,7 +11,7 @@ const generateId = () => Math.random().toString(36).substring(2, 11);
 
 // ─── helpers ────────────────────────────────────────────────────────
 
-const rowToSavedTrip = (row: {
+export const rowToSavedTrip = (row: {
   id: string;
   source: string;
   title: string;
