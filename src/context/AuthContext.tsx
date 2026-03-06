@@ -49,44 +49,46 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       if (event === "SIGNED_IN" && session?.user) {
         const provider = session.user.app_metadata?.provider;
+        // OAuth sign-in: migrate localStorage trips
         if (provider && provider !== "email") {
-          // OAuth sign-in: migrate localStorage trips
           void migrateLocalToSupabase();
-          // Sync handle, display_name, and avatar_url into auth metadata
-          setTimeout(async () => {
-            const updates: Record<string, string> = {};
-
-            const { data: profile } = await supabase
-              .from("profiles")
-              .select("handle, avatar_url")
-              .eq("id", session.user!.id)
-              .single();
-
-            if (profile?.handle && !session.user.user_metadata?.handle) {
-              updates.handle = profile.handle;
-            }
-
-            // Google stores the user's name as full_name; map it to display_name
-            if (!session.user.user_metadata?.display_name && session.user.user_metadata?.full_name) {
-              updates.display_name = session.user.user_metadata.full_name;
-            }
-
-            if (profile?.avatar_url && profile.avatar_url !== session.user.user_metadata?.avatar_url) {
-              // DB has a manually-uploaded avatar → push it to auth metadata
-              updates.avatar_url = profile.avatar_url;
-            } else if (!profile?.avatar_url && session.user.user_metadata?.avatar_url) {
-              // First OAuth sign-in: provider picture isn't in DB yet → persist it
-              await supabase.from("profiles").update({
-                avatar_url: session.user.user_metadata.avatar_url,
-                updated_at: new Date().toISOString(),
-              }).eq("id", session.user!.id);
-            }
-
-            if (Object.keys(updates).length > 0) {
-              await supabase.auth.updateUser({ data: updates });
-            }
-          }, 1000);
         }
+
+        // Sync profiles table → auth metadata on every sign-in (not just OAuth)
+        // This ensures Header (user_metadata) and ProfilePage (DB) always show the same avatar
+        setTimeout(async () => {
+          const updates: Record<string, string> = {};
+
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("handle, avatar_url")
+            .eq("id", session.user!.id)
+            .single();
+
+          if (profile?.handle && !session.user.user_metadata?.handle) {
+            updates.handle = profile.handle;
+          }
+
+          // Google stores the user's name as full_name; map it to display_name
+          if (!session.user.user_metadata?.display_name && session.user.user_metadata?.full_name) {
+            updates.display_name = session.user.user_metadata.full_name;
+          }
+
+          if (profile?.avatar_url && profile.avatar_url !== session.user.user_metadata?.avatar_url) {
+            // DB has an avatar (custom or previously synced) → push it to auth metadata
+            updates.avatar_url = profile.avatar_url;
+          } else if (!profile?.avatar_url && session.user.user_metadata?.avatar_url) {
+            // No DB avatar yet but OAuth provider supplied one → persist it to DB
+            await supabase.from("profiles").update({
+              avatar_url: session.user.user_metadata.avatar_url,
+              updated_at: new Date().toISOString(),
+            }).eq("id", session.user!.id);
+          }
+
+          if (Object.keys(updates).length > 0) {
+            await supabase.auth.updateUser({ data: updates });
+          }
+        }, 500);
       }
     });
 

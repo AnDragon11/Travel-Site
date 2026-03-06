@@ -21,6 +21,7 @@ export const rowToSavedTrip = (row: {
   is_favorite: boolean;
   is_public: boolean;
   is_bucket_list: boolean;
+  thumbnail?: string | null;
   rating: number | null;
   review: string | null;
   photos: string[] | null;
@@ -37,6 +38,7 @@ export const rowToSavedTrip = (row: {
   destination: row.destination,
   travelers: row.travelers,
   days: (row.days as SavedTrip['days']) ?? [],
+  thumbnail: row.thumbnail ?? undefined,
   isFavorite: row.is_favorite,
   isPublic: row.is_public,
   isBucketList: row.is_bucket_list,
@@ -108,6 +110,7 @@ const saveSupabaseTrip = async (trip: SavedTrip, userId: string): Promise<void> 
     destination: trip.destination,
     travelers: trip.travelers,
     days: trip.days as unknown as Json,
+    thumbnail: trip.thumbnail ?? null,
     is_favorite: trip.isFavorite ?? false,
     is_public: trip.isPublic ?? false,
     is_bucket_list: trip.isBucketList ?? false,

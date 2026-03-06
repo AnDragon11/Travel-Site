@@ -22,14 +22,14 @@ import { toast } from "sonner";
 
 // ─── Configs (matching Itinerary page) ─────────────────────────────
 const activityTypeConfig: Record<string, { icon: React.ElementType; color: string; bgColor: string; label: string }> = {
-  flight: { icon: Plane, color: "text-sky-500", bgColor: "bg-sky-50/60 dark:bg-sky-950/40 border-sky-200/50 dark:border-sky-800/50", label: "Flight / Airport" },
-  accommodation: { icon: Hotel, color: "text-blue-500", bgColor: "bg-blue-50/60 dark:bg-blue-950/40 border-blue-200/50 dark:border-blue-800/50", label: "Hotel / Stay" },
-  dining: { icon: Utensils, color: "text-orange-500", bgColor: "bg-orange-50/60 dark:bg-orange-950/40 border-orange-200/50 dark:border-orange-800/50", label: "Dining" },
-  cafe: { icon: Coffee, color: "text-amber-500", bgColor: "bg-amber-50/60 dark:bg-amber-950/40 border-amber-200/50 dark:border-amber-800/50", label: "Café" },
-  sightseeing: { icon: Camera, color: "text-emerald-500", bgColor: "bg-emerald-50/60 dark:bg-emerald-950/40 border-emerald-200/50 dark:border-emerald-800/50", label: "Sightseeing" },
-  activity: { icon: Ticket, color: "text-purple-500", bgColor: "bg-purple-50/60 dark:bg-purple-950/40 border-purple-200/50 dark:border-purple-800/50", label: "Activity" },
-  transport: { icon: Bus, color: "text-cyan-500", bgColor: "bg-cyan-50/60 dark:bg-cyan-950/40 border-cyan-200/50 dark:border-cyan-800/50", label: "Transport" },
-  shopping: { icon: ShoppingBag, color: "text-pink-500", bgColor: "bg-pink-50/60 dark:bg-pink-950/40 border-pink-200/50 dark:border-pink-800/50", label: "Shopping" },
+  flight: { icon: Plane, color: "text-sky-500", bgColor: "bg-sky-50 dark:bg-sky-950 border-sky-200 dark:border-sky-800", label: "Flight / Airport" },
+  accommodation: { icon: Hotel, color: "text-blue-500", bgColor: "bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800", label: "Hotel / Stay" },
+  dining: { icon: Utensils, color: "text-orange-500", bgColor: "bg-orange-50 dark:bg-orange-950 border-orange-200 dark:border-orange-800", label: "Dining" },
+  cafe: { icon: Coffee, color: "text-amber-500", bgColor: "bg-amber-50 dark:bg-amber-950 border-amber-200 dark:border-amber-800", label: "Café" },
+  sightseeing: { icon: Camera, color: "text-emerald-500", bgColor: "bg-emerald-50 dark:bg-emerald-950 border-emerald-200 dark:border-emerald-800", label: "Sightseeing" },
+  activity: { icon: Ticket, color: "text-purple-500", bgColor: "bg-purple-50 dark:bg-purple-950 border-purple-200 dark:border-purple-800", label: "Activity" },
+  transport: { icon: Bus, color: "text-cyan-500", bgColor: "bg-cyan-50 dark:bg-cyan-950 border-cyan-200 dark:border-cyan-800", label: "Transport" },
+  shopping: { icon: ShoppingBag, color: "text-pink-500", bgColor: "bg-pink-50 dark:bg-pink-950 border-pink-200 dark:border-pink-800", label: "Shopping" },
 };
 
 const transportTypes = [
@@ -247,7 +247,7 @@ const AddSlotCard = ({
     onDragOver={onDragOver}
     onDrop={onDrop}
     className={cn(
-      "flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-border/60 hover:border-primary/50 transition-all duration-200 w-[200px] h-[240px] shrink-0 bg-muted/30 hover:bg-muted/60 cursor-pointer group ml-4",
+      "flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-border/60 hover:border-primary/50 transition-all duration-200 w-[200px] h-[240px] shrink-0 bg-muted hover:bg-muted/80 cursor-pointer group ml-4",
       isDragOver && "ring-2 ring-primary ring-offset-2 border-primary"
     )}
   >
@@ -450,6 +450,7 @@ const TripBuilder = () => {
   const skipAutoSaveRef = useRef(0); // incremented before programmatic setTrip calls to skip auto-save
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const tripLoadedRef = useRef(false); // true once trip is fully loaded; prevents double-load on authLoading change
 
   const [trip, setTrip] = useState<SavedTrip>({
     id: crypto.randomUUID(),
@@ -462,21 +463,30 @@ const TripBuilder = () => {
     updatedAt: new Date().toISOString(),
   });
 
-  // Load existing trip if editing
+  // Load existing trip if editing — only runs once per trip (tripLoadedRef prevents double-load on authLoading change)
   useEffect(() => {
     const stateTrip = (location.state as { trip?: SavedTrip } | null)?.trip;
     if (stateTrip) {
-      skipAutoSaveRef.current++;
-      setTrip(stateTrip);
+      if (!tripLoadedRef.current) {
+        tripLoadedRef.current = true;
+        skipAutoSaveRef.current++;
+        setTrip(stateTrip);
+      }
       return;
     }
-    if (!id || authLoading) return;
+    if (!id || authLoading || tripLoadedRef.current) return;
     loadTrips().then(async trips => {
       const found = trips.find(t => t.id === id);
-      if (found) { skipAutoSaveRef.current++; setTrip(found); return; }
+      if (found) {
+        tripLoadedRef.current = true;
+        skipAutoSaveRef.current++;
+        setTrip(found);
+        return;
+      }
       // Not in user's trips — try fetching directly (shared link, public trip)
       const { data } = await supabase.from("trips").select("*").eq("id", id).maybeSingle();
       if (data) {
+        tripLoadedRef.current = true;
         skipAutoSaveRef.current++;
         setTrip(rowToSavedTrip(data as Parameters<typeof rowToSavedTrip>[0]));
       } else if (!user) {
@@ -538,7 +548,17 @@ const TripBuilder = () => {
     return () => { supabase.removeChannel(channel); };
   }, [id]);
 
-  // Auto-save: fires 1.5s after any trip change, skipping programmatic loads
+  // Unmount cleanup for auto-save timers
+  useEffect(() => {
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+    };
+  }, []);
+
+  // Auto-save: fires 1.5s after any user-triggered trip change.
+  // Does NOT return a cleanup — timers are cleared at the top of each non-skip run,
+  // so a programmatic setTrip (skip run) never cancels a pending user-edit save.
   useEffect(() => {
     if (skipAutoSaveRef.current > 0) {
       skipAutoSaveRef.current--;
@@ -553,13 +573,15 @@ const TripBuilder = () => {
         await saveToStorage(updated);
         setAutoSaveStatus("saved");
         savedTimerRef.current = setTimeout(() => setAutoSaveStatus("idle"), 2500);
-        // For new trips, update URL so the trip has a permanent address
-        if (!id) navigate(`/trip/${updated.id}`, { replace: true });
+        // For new trips, mark as loaded before navigating so the load effect doesn't re-fetch
+        if (!id) {
+          tripLoadedRef.current = true;
+          navigate(`/trip/${updated.id}`, { replace: true });
+        }
       } catch {
         setAutoSaveStatus("error");
       }
     }, 1500);
-    return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
   }, [trip]);
 
   const [dialogOpen, setDialogOpen] = useState(false);

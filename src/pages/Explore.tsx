@@ -170,7 +170,7 @@ const Explore = () => {
     const totalCost = calculateTripCost(trip);
     const isFavorited = isTripFavorited(trip);
     const firstAct = trip.days[0]?.activities[0] as any;
-    const coverImage = firstAct?.image_url || firstAct?.image;
+    const coverImage = trip.thumbnail ?? firstAct?.image_url ?? firstAct?.image;
     const author = tripAuthors[trip.id];
 
     return (

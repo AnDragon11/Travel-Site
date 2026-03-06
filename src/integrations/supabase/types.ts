@@ -14,129 +14,505 @@ export type Database = {
   }
   public: {
     Tables: {
-      itinerary_requests: {
+      amenity_tags: {
         Row: {
+          category: string
+          display_name: string
           id: string
-          user_id: string | null
-          status: 'pending' | 'processing' | 'completed' | 'error'
-          form_data: Json
-          result: Json | null
-          error_message: string | null
-          created_at: string
-          updated_at: string
+          tag: string
         }
         Insert: {
+          category: string
+          display_name: string
           id?: string
-          user_id?: string | null
-          status?: 'pending' | 'processing' | 'completed' | 'error'
-          form_data: Json
-          result?: Json | null
-          error_message?: string | null
-          created_at?: string
-          updated_at?: string
+          tag: string
         }
         Update: {
+          category?: string
+          display_name?: string
           id?: string
-          user_id?: string | null
-          status?: 'pending' | 'processing' | 'completed' | 'error'
-          form_data?: Json
-          result?: Json | null
+          tag?: string
+        }
+        Relationships: []
+      }
+      attractions: {
+        Row: {
+          active: boolean | null
+          address: string | null
+          category: string
+          created_at: string | null
+          description: string | null
+          destination_id: string
+          id: string
+          last_updated: string | null
+          latitude: number | null
+          longitude: number | null
+          name: string
+          opening_hours: Json | null
+          price_range: string | null
+          rating: number | null
+          tags: string[] | null
+          typical_duration_hours: number | null
+          website: string | null
+        }
+        Insert: {
+          active?: boolean | null
+          address?: string | null
+          category: string
+          created_at?: string | null
+          description?: string | null
+          destination_id: string
+          id?: string
+          last_updated?: string | null
+          latitude?: number | null
+          longitude?: number | null
+          name: string
+          opening_hours?: Json | null
+          price_range?: string | null
+          rating?: number | null
+          tags?: string[] | null
+          typical_duration_hours?: number | null
+          website?: string | null
+        }
+        Update: {
+          active?: boolean | null
+          address?: string | null
+          category?: string
+          created_at?: string | null
+          description?: string | null
+          destination_id?: string
+          id?: string
+          last_updated?: string | null
+          latitude?: number | null
+          longitude?: number | null
+          name?: string
+          opening_hours?: Json | null
+          price_range?: string | null
+          rating?: number | null
+          tags?: string[] | null
+          typical_duration_hours?: number | null
+          website?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "attractions_destination_id_fkey"
+            columns: ["destination_id"]
+            isOneToOne: false
+            referencedRelation: "destinations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      climate_data: {
+        Row: {
+          avg_rainfall_mm: number | null
+          avg_temp_c: number | null
+          condition: string | null
+          destination_id: string
+          fortnight: number
+          id: string
+          last_updated: string | null
+          notes: string | null
+          peak_season: boolean | null
+        }
+        Insert: {
+          avg_rainfall_mm?: number | null
+          avg_temp_c?: number | null
+          condition?: string | null
+          destination_id: string
+          fortnight: number
+          id?: string
+          last_updated?: string | null
+          notes?: string | null
+          peak_season?: boolean | null
+        }
+        Update: {
+          avg_rainfall_mm?: number | null
+          avg_temp_c?: number | null
+          condition?: string | null
+          destination_id?: string
+          fortnight?: number
+          id?: string
+          last_updated?: string | null
+          notes?: string | null
+          peak_season?: boolean | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "climate_data_destination_id_fkey"
+            columns: ["destination_id"]
+            isOneToOne: false
+            referencedRelation: "destinations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      destinations: {
+        Row: {
+          country_code: string
+          country_name: string
+          created_at: string | null
+          currency_code: string | null
+          iata_code: string | null
+          id: string
+          language: string | null
+          latitude: number
+          longitude: number
+          name: string
+          region: string | null
+          timezone: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          country_code: string
+          country_name: string
+          created_at?: string | null
+          currency_code?: string | null
+          iata_code?: string | null
+          id?: string
+          language?: string | null
+          latitude: number
+          longitude: number
+          name: string
+          region?: string | null
+          timezone?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          country_code?: string
+          country_name?: string
+          created_at?: string | null
+          currency_code?: string | null
+          iata_code?: string | null
+          id?: string
+          language?: string | null
+          latitude?: number
+          longitude?: number
+          name?: string
+          region?: string | null
+          timezone?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      flight_routes: {
+        Row: {
+          active: boolean | null
+          airline_iata: string
+          airline_name: string | null
+          created_at: string | null
+          destination_iata: string
+          id: string
+          last_verified: string | null
+          origin_iata: string
+          typical_duration_min: number | null
+          typical_stops: number | null
+        }
+        Insert: {
+          active?: boolean | null
+          airline_iata: string
+          airline_name?: string | null
+          created_at?: string | null
+          destination_iata: string
+          id?: string
+          last_verified?: string | null
+          origin_iata: string
+          typical_duration_min?: number | null
+          typical_stops?: number | null
+        }
+        Update: {
+          active?: boolean | null
+          airline_iata?: string
+          airline_name?: string | null
+          created_at?: string | null
+          destination_iata?: string
+          id?: string
+          last_verified?: string | null
+          origin_iata?: string
+          typical_duration_min?: number | null
+          typical_stops?: number | null
+        }
+        Relationships: []
+      }
+      hotel_amenities: {
+        Row: {
+          amenity_tag: string
+          hotel_id: string
+        }
+        Insert: {
+          amenity_tag: string
+          hotel_id: string
+        }
+        Update: {
+          amenity_tag?: string
+          hotel_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hotel_amenities_amenity_tag_fkey"
+            columns: ["amenity_tag"]
+            isOneToOne: false
+            referencedRelation: "amenity_tags"
+            referencedColumns: ["tag"]
+          },
+          {
+            foreignKeyName: "hotel_amenities_hotel_id_fkey"
+            columns: ["hotel_id"]
+            isOneToOne: false
+            referencedRelation: "hotels"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      hotels: {
+        Row: {
+          active: boolean | null
+          address: string | null
+          city: string
+          country_code: string
+          created_at: string | null
+          description: string | null
+          destination_id: string | null
+          id: string
+          last_verified: string | null
+          latitude: number | null
+          longitude: number | null
+          name: string
+          provider: string | null
+          provider_id: string | null
+          star_rating: number | null
+          website: string | null
+        }
+        Insert: {
+          active?: boolean | null
+          address?: string | null
+          city: string
+          country_code: string
+          created_at?: string | null
+          description?: string | null
+          destination_id?: string | null
+          id?: string
+          last_verified?: string | null
+          latitude?: number | null
+          longitude?: number | null
+          name: string
+          provider?: string | null
+          provider_id?: string | null
+          star_rating?: number | null
+          website?: string | null
+        }
+        Update: {
+          active?: boolean | null
+          address?: string | null
+          city?: string
+          country_code?: string
+          created_at?: string | null
+          description?: string | null
+          destination_id?: string | null
+          id?: string
+          last_verified?: string | null
+          latitude?: number | null
+          longitude?: number | null
+          name?: string
+          provider?: string | null
+          provider_id?: string | null
+          star_rating?: number | null
+          website?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hotels_destination_id_fkey"
+            columns: ["destination_id"]
+            isOneToOne: false
+            referencedRelation: "destinations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      itinerary_requests: {
+        Row: {
+          created_at: string | null
+          error_message: string | null
+          form_data: Json
+          id: string
+          result: Json | null
+          status: string | null
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
           error_message?: string | null
-          created_at?: string
-          updated_at?: string
+          form_data: Json
+          id?: string
+          result?: Json | null
+          status?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          error_message?: string | null
+          form_data?: Json
+          id?: string
+          result?: Json | null
+          status?: string | null
+          updated_at?: string | null
+          user_id?: string | null
         }
         Relationships: []
       }
       profiles: {
         Row: {
-          id: string
-          email: string | null
-          display_name: string | null
-          handle: string | null
           avatar_url: string | null
           bio: string | null
-          created_at: string
-          updated_at: string
+          created_at: string | null
+          display_name: string | null
+          email: string | null
+          handle: string | null
+          id: string
+          passport_country: string | null
+          updated_at: string | null
         }
         Insert: {
-          id: string
-          email?: string | null
-          display_name?: string | null
-          handle?: string | null
           avatar_url?: string | null
           bio?: string | null
-          created_at?: string
-          updated_at?: string
+          created_at?: string | null
+          display_name?: string | null
+          email?: string | null
+          handle?: string | null
+          id: string
+          passport_country?: string | null
+          updated_at?: string | null
         }
         Update: {
-          id?: string
-          email?: string | null
-          display_name?: string | null
-          handle?: string | null
           avatar_url?: string | null
           bio?: string | null
-          created_at?: string
-          updated_at?: string
+          created_at?: string | null
+          display_name?: string | null
+          email?: string | null
+          handle?: string | null
+          id?: string
+          passport_country?: string | null
+          updated_at?: string | null
         }
         Relationships: []
       }
-      trips: {
+      trip_collaborators: {
         Row: {
+          accepted_at: string | null
           id: string
-          user_id: string | null
-          source: 'ai' | 'custom' | 'bucket_list' | 'sample'
-          title: string
-          destination: string
-          travelers: number
-          days: Json
-          is_favorite: boolean
-          is_public: boolean
-          is_bucket_list: boolean
-          rating: number | null
-          review: string | null
-          photos: string[] | null
-          tags: string[] | null
-          ai_metadata: Json | null
-          created_at: string
-          updated_at: string
+          invited_at: string | null
+          invited_by: string | null
+          role: string
+          status: string
+          trip_id: string
+          user_id: string
         }
         Insert: {
+          accepted_at?: string | null
           id?: string
-          user_id?: string | null
-          source: 'ai' | 'custom' | 'bucket_list' | 'sample'
-          title: string
-          destination: string
-          travelers: number
-          days: Json
-          is_favorite?: boolean
-          is_public?: boolean
-          is_bucket_list?: boolean
-          rating?: number | null
-          review?: string | null
-          photos?: string[] | null
-          tags?: string[] | null
-          ai_metadata?: Json | null
-          created_at?: string
-          updated_at?: string
+          invited_at?: string | null
+          invited_by?: string | null
+          role?: string
+          status?: string
+          trip_id: string
+          user_id: string
         }
         Update: {
+          accepted_at?: string | null
           id?: string
-          user_id?: string | null
-          source?: 'ai' | 'custom' | 'bucket_list' | 'sample'
-          title?: string
-          destination?: string
-          travelers?: number
+          invited_at?: string | null
+          invited_by?: string | null
+          role?: string
+          status?: string
+          trip_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trip_collaborators_invited_by_fkey"
+            columns: ["invited_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trip_collaborators_trip_id_fkey"
+            columns: ["trip_id"]
+            isOneToOne: false
+            referencedRelation: "trips"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trip_collaborators_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      trips: {
+        Row: {
+          ai_metadata: Json | null
+          created_at: string | null
+          days: Json
+          destination: string
+          id: string
+          is_bucket_list: boolean
+          is_favorite: boolean | null
+          is_public: boolean
+          photos: string[] | null
+          rating: number | null
+          review: string | null
+          source: string
+          tags: string[] | null
+          thumbnail: string | null
+          title: string
+          travelers: number
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          ai_metadata?: Json | null
+          created_at?: string | null
           days?: Json
-          is_favorite?: boolean
-          is_public?: boolean
+          destination: string
+          id?: string
           is_bucket_list?: boolean
+          is_favorite?: boolean | null
+          is_public?: boolean
+          photos?: string[] | null
           rating?: number | null
           review?: string | null
-          photos?: string[] | null
+          source: string
           tags?: string[] | null
+          thumbnail?: string | null
+          title: string
+          travelers?: number
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
           ai_metadata?: Json | null
-          created_at?: string
-          updated_at?: string
+          created_at?: string | null
+          days?: Json
+          destination?: string
+          id?: string
+          is_bucket_list?: boolean
+          is_favorite?: boolean | null
+          is_public?: boolean
+          photos?: string[] | null
+          rating?: number | null
+          review?: string | null
+          source?: string
+          tags?: string[] | null
+          thumbnail?: string | null
+          title?: string
+          travelers?: number
+          updated_at?: string | null
+          user_id?: string | null
         }
         Relationships: [
           {
@@ -145,22 +521,82 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
-          }
+          },
         ]
+      }
+      visa_requirements: {
+        Row: {
+          destination_country: string
+          id: string
+          last_updated: string | null
+          max_stay_days: number | null
+          notes: string | null
+          passport_country: string
+          requirement: string
+          source_url: string | null
+        }
+        Insert: {
+          destination_country: string
+          id?: string
+          last_updated?: string | null
+          max_stay_days?: number | null
+          notes?: string | null
+          passport_country: string
+          requirement: string
+          source_url?: string | null
+        }
+        Update: {
+          destination_country?: string
+          id?: string
+          last_updated?: string | null
+          max_stay_days?: number | null
+          notes?: string | null
+          passport_country?: string
+          requirement?: string
+          source_url?: string | null
+        }
+        Relationships: []
       }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      get_email_by_handle: {
-        Args: { p_handle: string }
-        Returns: string | null
+      get_email_by_handle: { Args: { p_handle: string }; Returns: string }
+      get_pending_invites_count: {
+        Args: { p_user_id: string }
+        Returns: number
       }
-      is_handle_available: {
-        Args: { p_handle: string }
-        Returns: boolean
+      get_user_accessible_trips: {
+        Args: { p_user_id: string }
+        Returns: {
+          ai_metadata: Json | null
+          created_at: string | null
+          days: Json
+          destination: string
+          id: string
+          is_bucket_list: boolean
+          is_favorite: boolean | null
+          is_public: boolean
+          photos: string[] | null
+          rating: number | null
+          review: string | null
+          source: string
+          tags: string[] | null
+          thumbnail: string | null
+          title: string
+          travelers: number
+          updated_at: string | null
+          user_id: string | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "trips"
+          isOneToOne: false
+          isSetofReturn: true
+        }
       }
+      is_handle_available: { Args: { p_handle: string }; Returns: boolean }
     }
     Enums: {
       [_ in never]: never

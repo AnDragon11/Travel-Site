@@ -342,59 +342,18 @@ const generatePlaceholder = (formData: TripFormData): TripItinerary => {
   return ensureTransportBookends(placeholder, formData);
 };
 
-/** Direct n8n call — used for guests (no Supabase account). */
-const submitDirectToN8n = async (formData: TripFormData): Promise<TripItinerary> => {
-  const webhookUrl = import.meta.env.VITE_N8N_WEBHOOK_URL;
-  if (!webhookUrl) {
-    console.warn("VITE_N8N_WEBHOOK_URL not set, using placeholder");
-    return generatePlaceholder(formData);
-  }
-
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 120000);
-
-  try {
-    const response = await fetch(webhookUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(formData),
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      const errorBody = await response.json().catch(() => ({}));
-      const errorMsg = errorBody?.error || `Server error: ${response.status}`;
-      const isTimeout = response.status === 504 || errorMsg.includes("timed out");
-      if (isTimeout) {
-        console.warn("Webhook timed out, using placeholder");
-        return generatePlaceholder(formData);
-      }
-      throw new Error(errorMsg);
-    }
-
-    const data = await response.json();
-
-    if (data?.error) {
-      const isTimeout = data.error.includes("timed out") || data.error.includes("timeout");
-      if (isTimeout) {
-        console.warn("Webhook timed out (from response), using placeholder");
-        return generatePlaceholder(formData);
-      }
-      throw new Error(data.error);
-    }
-
-    return parseWebhookResponse(data, formData);
-  } catch (err) {
-    if (err instanceof Error) throw err;
-    throw new Error("Failed to generate itinerary");
-  }
+/** Direct edge function call — fallback when Supabase INSERT fails. Returns itinerary inline. */
+const submitDirectToEdge = async (formData: TripFormData): Promise<TripItinerary> => {
+  const { data, error } = await supabase.functions.invoke("generate-itinerary", {
+    body: { formData },
+  });
+  if (error) throw new Error(error.message);
+  return parseWebhookResponse(data, formData);
 };
 
 /**
- * Supabase flow: insert a request row, then wait for n8n to write the result
- * back via a database webhook → Realtime subscription.
+ * Supabase flow: insert a request row, invoke the generate-itinerary edge function,
+ * then wait for it to write the result back via Realtime subscription.
  * Works for both authenticated users (userId = string) and guests (userId = null).
  */
 const submitViaSupabase = (formData: TripFormData, userId: string | null): Promise<TripItinerary> => {
@@ -428,14 +387,19 @@ const submitViaSupabase = (formData: TripFormData, userId: string | null): Promi
 
         if (error || !data) {
           clearTimeout(timeoutId);
-          // Supabase insert failed — fall back to direct n8n call for both guests and auth users
-          console.warn("Supabase insert failed, falling back to direct n8n call:", error?.message);
-          submitDirectToN8n(formData).then(resolve).catch(reject);
+          // Supabase insert failed — call edge function directly and return inline result
+          console.warn("Supabase insert failed, falling back to direct edge call:", error?.message);
+          submitDirectToEdge(formData).then(resolve).catch(reject);
           return;
         }
 
         const requestId = data.id;
         console.log("Itinerary request created:", requestId, userId ? `(user: ${userId})` : "(guest)");
+
+        // Invoke edge function to process the request (fire and forget — Realtime delivers the result)
+        supabase.functions.invoke("generate-itinerary", {
+          body: { requestId, formData },
+        }).catch((err: Error) => console.error("Edge function invoke failed:", err.message));
 
         channel = supabase
           .channel(`itinerary-${requestId}`)
@@ -506,10 +470,9 @@ const submitViaSupabase = (formData: TripFormData, userId: string | null): Promi
 
 /**
  * Main entry point called by Planner.tsx.
- * Both authenticated users and guests use the Supabase INSERT + Realtime flow
- * so n8n always has a row to write the result back to.
- * Guests get user_id = null; if that insert fails (e.g. SQL not yet run),
- * they fall back to a direct n8n HTTP call.
+ * Both authenticated users and guests use the Supabase INSERT + Realtime flow.
+ * After inserting the row the edge function is invoked to generate the itinerary.
+ * If the insert fails, falls back to a direct edge function call (returns inline).
  */
 export const submitTripRequest = async (formData: TripFormData): Promise<TripItinerary> => {
   console.log("=== Trip Planning Request ===");

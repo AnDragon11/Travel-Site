@@ -63,6 +63,8 @@ export interface TripItinerary {
     nights: number;
     total_cost: number;
   };
+  /** Thumbnail image URL for trip cards (AI-provided) */
+  thumbnail_url?: string;
   /** True when AI generation failed and a generic placeholder was used instead */
   isPlaceholder?: boolean;
 }

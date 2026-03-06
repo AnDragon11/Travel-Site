@@ -49,7 +49,7 @@ const TripCard = ({
 }) => {
   const navigate = useNavigate();
   const firstAct = trip.days?.[0]?.activities?.[0] as unknown as (Record<string, string>) | undefined;
-  const coverPhoto = trip.photos?.[0] ?? firstAct?.image_url ?? firstAct?.image;
+  const coverPhoto = trip.thumbnail ?? trip.photos?.[0] ?? firstAct?.image_url ?? firstAct?.image;
   const startDate = trip.days?.[0]?.date
     ? new Date(trip.days[0].date).toLocaleDateString(undefined, { month: "short", year: "numeric" })
     : null;
@@ -73,8 +73,8 @@ const TripCard = ({
 
       {/* Bottom info */}
       <div className="absolute bottom-0 left-0 right-0 p-3">
-        <p className="text-white text-sm font-semibold leading-tight truncate">{trip.destination}</p>
-        {startDate && <p className="text-white/70 text-xs mt-0.5">{startDate}</p>}
+        <p className="text-white text-sm font-semibold leading-tight truncate">{trip.title}</p>
+        <p className="text-white/70 text-xs mt-0.5 truncate">{trip.destination}{startDate ? ` · ${startDate}` : ""}</p>
       </div>
 
       {/* Top-right actions */}

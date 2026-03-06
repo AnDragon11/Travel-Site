@@ -75,6 +75,7 @@ export const convertItineraryToTrip = (
     destination: itinerary.destination,
     travelers: itinerary.travelers,
     days,
+    thumbnail: itinerary.thumbnail_url ?? undefined,
     isBucketList: true,
     aiMetadata: {
       comfortLevel: itinerary.comfort_level,

@@ -19,6 +19,9 @@ export interface SavedTrip {
   // Days structure (uses BuilderDay from TripBuilder)
   days: BuilderDay[];
 
+  // Thumbnail — cover image for cards (AI-provided or user-set)
+  thumbnail?: string;
+
   // Trip Diary features
   isPublic?: boolean;
   isBucketList?: boolean;
