@@ -479,9 +479,9 @@ ${realSection}
           "location": "<venue name or neighborhood>",
           "cost": <per-person USD, 0 if free>,
           "notes": "<practical tip, visa note, or booking advice>",
-          "image_url": "<Unsplash URL or omit>",
           "rating": <0-5 or omit>,
           "booking_url": "<direct booking URL or omit>",
+          "image_url": "<search for the venue's real hero image — use the main photo from its official site, Wikipedia, TripAdvisor, or Booking.com listing; only omit if none found>",
           "address": "<street address or omit>",
           "website": "<venue website or omit>"
         }
@@ -532,6 +532,25 @@ async function callXAI(prompt: string): Promise<string> {
 
 function parseAIJSON(raw: string): Record<string, unknown> {
   return JSON.parse(raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, ""));
+}
+
+// Generate a keyword-based Unsplash URL per activity — never 404s, always contextual
+function activityImageUrl(name: string, type: string, location: string, destination: string): string {
+  const typeKeywords: Record<string, string> = {
+    flight:        "airplane airport departure aviation",
+    transport:     "city transport train bus travel",
+    accommodation: "hotel room interior design",
+    dining:        "restaurant food table gourmet",
+    sightseeing:   "landmark architecture historic",
+    activity:      "outdoor adventure experience",
+    shopping:      "market shopping street boutique",
+    cafe:          "cafe coffee morning pastry",
+  };
+  const base = typeKeywords[type] ?? "travel";
+  // Combine destination + venue name slug + type keywords for uniqueness
+  const venueSlug = (location || name).replace(/[^a-zA-Z0-9 ]/g, "").split(" ").slice(0, 3).join(" ");
+  const terms = [destination, venueSlug, base].filter(Boolean).join(",");
+  return `https://source.unsplash.com/800x600/?${encodeURIComponent(terms)}`;
 }
 
 // ─── Main ──────────────────────────────────────────────────────────────────────
@@ -615,6 +634,26 @@ serve(async (req) => {
     // ── Generate itinerary ───────────────────────────────────────────────────
     const raw = await callXAI(buildPrompt(form, real));
     const itinerary = parseAIJSON(raw);
+
+    // Fill missing image_url with keyword-based Unsplash fallback
+    // (Grok search provides real images; this only applies when none was found)
+    const dailyItinerary = itinerary.daily_itinerary as any[];
+    if (Array.isArray(dailyItinerary)) {
+      for (const day of dailyItinerary) {
+        if (Array.isArray(day.activities)) {
+          for (const act of day.activities) {
+            if (!act.image_url || !act.image_url.startsWith("http")) {
+              act.image_url = activityImageUrl(
+                act.name ?? "",
+                act.type ?? "",
+                act.location ?? "",
+                form.destination_city,
+              );
+            }
+          }
+        }
+      }
+    }
 
     // Canonical overrides (AI formats these inconsistently)
     itinerary.comfort_level = form.comfort_level;
