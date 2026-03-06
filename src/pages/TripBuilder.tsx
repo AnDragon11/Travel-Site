@@ -16,7 +16,7 @@ import { cn } from "@/lib/utils";
 import {
   Plane, Hotel, Utensils, Camera, MapPin, Clock, Plus, Trash2, Pencil, Save,
   Ticket, Coffee, ShoppingBag, Bus, Car, Train, Footprints, ImagePlus,
-  Calendar, Users, ArrowLeft, GripVertical, Heart, Tag,
+  Calendar, Users, ArrowLeft, GripVertical, Heart, Tag, Share2, LogOut,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -87,6 +87,13 @@ export interface BuilderTrip {
 // ─── Storage ────────────────────────────────────────────────────────
 import { loadTrips, saveTrip as saveToStorage } from "@/services/storageService";
 import { SavedTrip } from "@/lib/tripTypes";
+import { useAuth } from "@/context/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
+import {
+  Collaborator, getCollaborators, getTripRole, leaveTrip,
+} from "@/services/collaboratorService";
+import ShareTripModal from "@/components/ShareTripModal";
+import CollaboratorAvatars from "@/components/CollaboratorAvatars";
 
 const generateId = () => Math.random().toString(36).substring(2, 10);
 
@@ -427,9 +434,15 @@ const TripBuilder = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const location = useLocation();
+  const { user } = useAuth();
   const fromExplore = (location.state as { from?: string } | null)?.from === 'explore';
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(1000);
+
+  // Collaboration state
+  const [collaborators, setCollaborators] = useState<Collaborator[]>([]);
+  const [isOwner, setIsOwner] = useState(true);
+  const [shareOpen, setShareOpen] = useState(false);
 
   const [trip, setTrip] = useState<SavedTrip>({
     id: crypto.randomUUID(),
@@ -444,7 +457,6 @@ const TripBuilder = () => {
 
   // Load existing trip if editing
   useEffect(() => {
-    // Navigation state takes priority (e.g. trip passed from Explore for public/sample trips)
     const stateTrip = (location.state as { trip?: SavedTrip } | null)?.trip;
     if (stateTrip) {
       setTrip(stateTrip);
@@ -455,6 +467,44 @@ const TripBuilder = () => {
       const found = trips.find(t => t.id === id);
       if (found) setTrip(found);
     });
+  }, [id]);
+
+  // Determine role and load collaborators when editing an existing trip
+  useEffect(() => {
+    if (!id || !user) return;
+    getTripRole(id, user.id).then(role => setIsOwner(role === "owner"));
+    getCollaborators(id).then(setCollaborators).catch(() => {});
+  }, [id, user]);
+
+  // Real-time sync — when a collaborator saves changes, update local state
+  useEffect(() => {
+    if (!id) return;
+    const channel = supabase
+      .channel(`trip-collab-${id}`)
+      .on("postgres_changes", {
+        event: "UPDATE",
+        schema: "public",
+        table: "trips",
+        filter: `id=eq.${id}`,
+      }, payload => {
+        const incoming = payload.new as { updated_at: string; days: BuilderDay[] };
+        setTrip(prev => {
+          if (incoming.updated_at === prev.updatedAt) return prev;
+          toast.info("Trip updated by a collaborator");
+          return { ...prev, days: incoming.days as BuilderDay[], updatedAt: incoming.updated_at };
+        });
+      })
+      .on("postgres_changes", {
+        event: "*",
+        schema: "public",
+        table: "trip_collaborators",
+        filter: `trip_id=eq.${id}`,
+      }, () => {
+        getCollaborators(id).then(setCollaborators).catch(() => {});
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
   }, [id]);
 
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -571,9 +621,20 @@ const TripBuilder = () => {
       const updated = { ...trip, updatedAt: new Date().toISOString() };
       await saveToStorage(updated);
       toast.success("Trip saved!");
-      navigate("/profile?tab=bucket");
+      if (!id) navigate("/profile?tab=bucket"); // only redirect on first save
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to save trip");
+    }
+  };
+
+  const handleLeaveTrip = async () => {
+    if (!id) return;
+    try {
+      await leaveTrip(id);
+      toast.success("You've left the trip");
+      navigate("/profile?tab=bucket");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to leave trip");
     }
   };
 
@@ -669,6 +730,14 @@ const TripBuilder = () => {
   return (
     <div className="min-h-screen flex flex-col bg-muted/30">
       <Header />
+      {id && (
+        <ShareTripModal
+          open={shareOpen}
+          onClose={() => setShareOpen(false)}
+          tripId={id}
+          tripTitle={trip.title}
+        />
+      )}
       <main className="flex-1 pt-16">
         {/* Hero Header */}
         <section className="bg-gradient-to-br from-primary via-primary/90 to-primary/80 text-primary-foreground py-8 md:py-12">
@@ -732,13 +801,43 @@ const TripBuilder = () => {
                 </div>
 
                 <div className="flex items-center gap-3">
-                  <div className="text-right mr-4">
+                  {/* Collaborator avatars */}
+                  {collaborators.length > 0 && (
+                    <CollaboratorAvatars collaborators={collaborators} />
+                  )}
+
+                  <div className="text-right mr-2">
                     <p className="text-primary-foreground/70 text-xs">Total Cost</p>
                     <p className="text-2xl font-bold">€{totalCost.toLocaleString()}</p>
                   </div>
+
+                  {/* Owner: share + save */}
+                  {isOwner && id && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="gap-1.5 text-primary-foreground/80 hover:text-primary-foreground hover:bg-primary-foreground/10"
+                      onClick={() => setShareOpen(true)}
+                    >
+                      <Share2 className="w-4 h-4" /> Share
+                    </Button>
+                  )}
+
                   <Button variant="secondary" size="sm" className="gap-1.5" onClick={saveTrip}>
                     <Save className="w-4 h-4" /> Save Trip
                   </Button>
+
+                  {/* Collaborator: leave trip */}
+                  {!isOwner && id && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="gap-1.5 text-destructive/80 hover:text-destructive hover:bg-destructive/10"
+                      onClick={handleLeaveTrip}
+                    >
+                      <LogOut className="w-4 h-4" /> Leave Trip
+                    </Button>
+                  )}
                 </div>
               </div>
             </div>

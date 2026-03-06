@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Menu, X, Compass, Briefcase, Globe, LogOut, Sun, Moon, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -6,6 +6,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "next-themes";
 import UserMenu from "./UserMenu";
 import { toast } from "sonner";
+import { getPendingInviteCount } from "@/services/collaboratorService";
 
 const Header = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -13,6 +14,12 @@ const Header = () => {
   const navigate = useNavigate();
   const { user, signOut, loading } = useAuth();
   const { theme, setTheme } = useTheme();
+  const [inviteCount, setInviteCount] = useState(0);
+
+  useEffect(() => {
+    if (!user) { setInviteCount(0); return; }
+    getPendingInviteCount(user.id).then(setInviteCount).catch(() => {});
+  }, [user]);
 
   const navLinks = [
     { href: "/", label: "Plan Trip" },
@@ -52,6 +59,9 @@ const Header = () => {
                 {link.label === "Profile" && <Briefcase className="w-4 h-4" />}
                 {link.label === "Explore" && <Globe className="w-4 h-4" />}
                 {link.label}
+                {link.label === "Profile" && inviteCount > 0 && (
+                  <span className="ml-0.5 w-4 h-4 bg-destructive text-destructive-foreground text-[10px] font-bold rounded-full flex items-center justify-center">{inviteCount > 9 ? "9+" : inviteCount}</span>
+                )}
               </Link>
             ))}
           </nav>
@@ -96,6 +106,9 @@ const Header = () => {
                   {link.label === "Profile" && <Briefcase className="w-4 h-4" />}
                   {link.label === "Explore" && <Globe className="w-4 h-4" />}
                   {link.label}
+                  {link.label === "Profile" && inviteCount > 0 && (
+                    <span className="ml-0.5 w-4 h-4 bg-destructive text-destructive-foreground text-[10px] font-bold rounded-full flex items-center justify-center">{inviteCount > 9 ? "9+" : inviteCount}</span>
+                  )}
                 </Link>
               ))}
 

@@ -93,14 +93,10 @@ const deleteLocalTrip = (id: string) => {
 // ─── Supabase functions (authenticated) ──────────────────────────────
 
 const loadSupabaseTrips = async (userId: string): Promise<SavedTrip[]> => {
-  const { data, error } = await supabase
-    .from("trips")
-    .select("*")
-    .eq("user_id", userId)
-    .neq("source", "sample")
-    .order("created_at", { ascending: false });
+  // Includes trips the user owns AND trips they collaborate on
+  const { data, error } = await supabase.rpc("get_user_accessible_trips", { p_user_id: userId });
   if (error) throw new Error("Failed to load trips. Please check your connection and try again.");
-  return data.map(rowToSavedTrip);
+  return (data ?? []).map(rowToSavedTrip);
 };
 
 const saveSupabaseTrip = async (trip: SavedTrip, userId: string): Promise<void> => {

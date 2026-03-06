@@ -13,8 +13,11 @@ import { SavedTrip } from "@/lib/tripTypes";
 import { toast } from "sonner";
 import {
   Globe, Lock, Grid3X3,
-  MapPin, Bookmark, Trash2, Eye, Sparkles, Plus,
+  MapPin, Bookmark, Trash2, Eye, Sparkles, Plus, Bell, CheckCircle, X, Users,
 } from "lucide-react";
+import {
+  PendingInvite, getPendingInvites, acceptInvite, declineInvite,
+} from "@/services/collaboratorService";
 
 // ─── Types ────────────────────────────────────────────────────────────
 interface ProfileData {
@@ -148,7 +151,12 @@ const ProfilePage = () => {
   const [bucketList, setBucketList] = useState<SavedTrip[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
-  const [tab, setTab] = useState<"diary" | "bucket">(searchParams.get("tab") === "bucket" ? "bucket" : "diary");
+  const [tab, setTab] = useState<"diary" | "bucket" | "invites">(
+    searchParams.get("tab") === "bucket" ? "bucket" :
+    searchParams.get("tab") === "invites" ? "invites" : "diary"
+  );
+  const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
+  const [respondingId, setRespondingId] = useState<string | null>(null);
 
   // ── Load profile + trips ──────────────────────────────────────────
   useEffect(() => {
@@ -266,6 +274,36 @@ const ProfilePage = () => {
       setBucketList(ts => ts.filter(t => t.id !== id));
     } catch { toast.error("Failed to delete trip"); }
   }, []);
+
+  // Load pending invites (own profile only)
+  useEffect(() => {
+    if (!isOwn || !user) return;
+    getPendingInvites().then(setPendingInvites).catch(() => {});
+  }, [isOwn, user]);
+
+  const handleAcceptInvite = async (invite: PendingInvite) => {
+    setRespondingId(invite.id);
+    try {
+      await acceptInvite(invite.id);
+      setPendingInvites(prev => prev.filter(i => i.id !== invite.id));
+      toast.success(`Joined "${invite.trip?.title}"`);
+      // Refresh trips so the collaborated trip appears
+      const [trips, bucket] = await Promise.all([loadTrips(), loadBucketList()]);
+      setDiaryTrips(trips.filter(t => !t.isBucketList));
+      setBucketList(bucket);
+    } catch { toast.error("Failed to accept invite"); }
+    finally { setRespondingId(null); }
+  };
+
+  const handleDeclineInvite = async (invite: PendingInvite) => {
+    setRespondingId(invite.id);
+    try {
+      await declineInvite(invite.id);
+      setPendingInvites(prev => prev.filter(i => i.id !== invite.id));
+      toast.success("Invite declined");
+    } catch { toast.error("Failed to decline invite"); }
+    finally { setRespondingId(null); }
+  };
 
   const handleBucketList = useCallback(async (trip: SavedTrip) => {
     if (!user) { toast.error("Sign in to add to your bucket list"); return; }
@@ -445,6 +483,19 @@ const ProfilePage = () => {
                 )}
               </button>
             )}
+            {isOwn && pendingInvites.length > 0 && (
+              <button
+                onClick={() => setTab("invites")}
+                className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
+                  tab === "invites"
+                    ? "border-primary text-primary"
+                    : "border-transparent text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <Bell className="w-4 h-4" /> Invitations
+                <span className="ml-1 text-xs bg-destructive text-destructive-foreground px-1.5 py-0.5 rounded-full">{pendingInvites.length}</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -492,6 +543,62 @@ const ProfilePage = () => {
                       </Button>
                     </div>
                   )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {tab === "invites" && isOwn && (
+            <div className="space-y-3">
+              <h2 className="text-sm font-medium text-muted-foreground">
+                {pendingInvites.length} pending {pendingInvites.length === 1 ? "invitation" : "invitations"}
+              </h2>
+              {pendingInvites.length === 0 ? (
+                <div className="text-center py-16">
+                  <Bell className="w-12 h-12 text-muted-foreground/30 mx-auto mb-3" />
+                  <p className="text-muted-foreground font-medium">No pending invitations</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {pendingInvites.map(invite => (
+                    <div key={invite.id} className="bg-card border border-border rounded-xl p-4 flex items-center justify-between gap-4">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                          {invite.invited_by_profile?.avatar_url
+                            ? <img src={invite.invited_by_profile.avatar_url} alt="" className="w-full h-full rounded-full object-cover" />
+                            : <Users className="w-5 h-5 text-primary" />}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-foreground truncate">
+                            <span className="font-semibold">{invite.invited_by_profile?.display_name || `@${invite.invited_by_profile?.handle}`}</span>
+                            {" "}invited you to collaborate
+                          </p>
+                          <p className="text-xs text-muted-foreground truncate">
+                            {invite.trip?.title} · {invite.trip?.destination}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="gap-1.5 text-destructive border-destructive/30 hover:bg-destructive/10"
+                          disabled={respondingId === invite.id}
+                          onClick={() => handleDeclineInvite(invite)}
+                        >
+                          <X className="w-3.5 h-3.5" /> Decline
+                        </Button>
+                        <Button
+                          size="sm"
+                          className="gap-1.5"
+                          disabled={respondingId === invite.id}
+                          onClick={() => handleAcceptInvite(invite)}
+                        >
+                          <CheckCircle className="w-3.5 h-3.5" /> Accept
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
