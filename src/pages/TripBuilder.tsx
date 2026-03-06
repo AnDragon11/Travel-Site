@@ -90,7 +90,7 @@ import { SavedTrip } from "@/lib/tripTypes";
 import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  Collaborator, getCollaborators, getTripRole, leaveTrip,
+  Collaborator, getCollaborators, getTripRole, leaveTrip, getTripOwnerProfile,
 } from "@/services/collaboratorService";
 import ShareTripModal from "@/components/ShareTripModal";
 import CollaboratorAvatars from "@/components/CollaboratorAvatars";
@@ -442,7 +442,14 @@ const TripBuilder = () => {
   // Collaboration state
   const [collaborators, setCollaborators] = useState<Collaborator[]>([]);
   const [isOwner, setIsOwner] = useState(true);
+  const [ownerProfile, setOwnerProfile] = useState<{ display_name: string | null; handle: string | null; avatar_url: string | null } | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
+
+  // Auto-save state
+  const [autoSaveStatus, setAutoSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const skipAutoSaveRef = useRef(0); // incremented before programmatic setTrip calls to skip auto-save
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [trip, setTrip] = useState<SavedTrip>({
     id: crypto.randomUUID(),
@@ -459,16 +466,18 @@ const TripBuilder = () => {
   useEffect(() => {
     const stateTrip = (location.state as { trip?: SavedTrip } | null)?.trip;
     if (stateTrip) {
+      skipAutoSaveRef.current++;
       setTrip(stateTrip);
       return;
     }
     if (!id || authLoading) return;
     loadTrips().then(async trips => {
       const found = trips.find(t => t.id === id);
-      if (found) { setTrip(found); return; }
+      if (found) { skipAutoSaveRef.current++; setTrip(found); return; }
       // Not in user's trips — try fetching directly (shared link, public trip)
       const { data } = await supabase.from("trips").select("*").eq("id", id).maybeSingle();
       if (data) {
+        skipAutoSaveRef.current++;
         setTrip(rowToSavedTrip(data as Parameters<typeof rowToSavedTrip>[0]));
       } else if (!user) {
         navigate(`/login?redirect=/trip/${id}`, { replace: true });
@@ -476,10 +485,24 @@ const TripBuilder = () => {
     });
   }, [id, authLoading]);
 
-  // Determine role and load collaborators when editing an existing trip
+  // Determine role, load collaborators, and resolve owner profile
   useEffect(() => {
-    if (!id || !user) return;
-    getTripRole(id, user.id).then(role => setIsOwner(role === "owner"));
+    if (!user) return;
+    // Owner profile from current user's metadata (shown even without an id)
+    setOwnerProfile({
+      display_name: user.user_metadata?.display_name ?? null,
+      handle: user.user_metadata?.handle ?? null,
+      avatar_url: user.user_metadata?.avatar_url ?? null,
+    });
+    if (!id) return;
+    getTripRole(id, user.id).then(async role => {
+      const isOwn = role === "owner";
+      setIsOwner(isOwn);
+      if (!isOwn) {
+        // Collaborator — fetch owner profile from DB
+        getTripOwnerProfile(id).then(p => { if (p) setOwnerProfile(p); }).catch(() => {});
+      }
+    });
     getCollaborators(id).then(setCollaborators).catch(() => {});
   }, [id, user]);
 
@@ -498,6 +521,7 @@ const TripBuilder = () => {
         setTrip(prev => {
           if (incoming.updated_at === prev.updatedAt) return prev;
           toast.info("Trip updated by a collaborator");
+          skipAutoSaveRef.current++;
           return { ...prev, days: incoming.days as BuilderDay[], updatedAt: incoming.updated_at };
         });
       })
@@ -513,6 +537,30 @@ const TripBuilder = () => {
 
     return () => { supabase.removeChannel(channel); };
   }, [id]);
+
+  // Auto-save: fires 1.5s after any trip change, skipping programmatic loads
+  useEffect(() => {
+    if (skipAutoSaveRef.current > 0) {
+      skipAutoSaveRef.current--;
+      return;
+    }
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+    setAutoSaveStatus("saving");
+    saveTimerRef.current = setTimeout(async () => {
+      try {
+        const updated = { ...trip, updatedAt: new Date().toISOString() };
+        await saveToStorage(updated);
+        setAutoSaveStatus("saved");
+        savedTimerRef.current = setTimeout(() => setAutoSaveStatus("idle"), 2500);
+        // For new trips, update URL so the trip has a permanent address
+        if (!id) navigate(`/trip/${updated.id}`, { replace: true });
+      } catch {
+        setAutoSaveStatus("error");
+      }
+    }, 1500);
+    return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
+  }, [trip]);
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingActivity, setEditingActivity] = useState<BuilderActivity>(createEmptyActivity());
@@ -621,17 +669,6 @@ const TripBuilder = () => {
 
       return { ...p, days: newDays };
     });
-  };
-
-  const saveTrip = async () => {
-    try {
-      const updated = { ...trip, updatedAt: new Date().toISOString() };
-      await saveToStorage(updated);
-      toast.success("Trip saved!");
-      if (!id) navigate("/profile?tab=bucket"); // only redirect on first save
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to save trip");
-    }
   };
 
   const handleCopyLink = () => {
@@ -815,9 +852,9 @@ const TripBuilder = () => {
                 </div>
 
                 <div className="flex items-center gap-3">
-                  {/* Collaborator avatars */}
-                  {collaborators.length > 0 && (
-                    <CollaboratorAvatars collaborators={collaborators} />
+                  {/* All participant avatars (owner + collaborators) */}
+                  {(ownerProfile || collaborators.length > 0) && (
+                    <CollaboratorAvatars collaborators={collaborators} ownerProfile={ownerProfile} />
                   )}
 
                   <div className="text-right mr-2">
@@ -846,9 +883,21 @@ const TripBuilder = () => {
                     </div>
                   )}
 
-                  <Button variant="secondary" size="sm" className="gap-1.5" onClick={saveTrip}>
-                    <Save className="w-4 h-4" /> Save Trip
-                  </Button>
+                  {/* Auto-save status */}
+                  {autoSaveStatus === "saving" && (
+                    <span className="flex items-center gap-1 text-xs text-primary-foreground/60 shrink-0">
+                      <span className="w-3 h-3 border border-primary-foreground/40 border-t-transparent rounded-full animate-spin" />
+                      Saving…
+                    </span>
+                  )}
+                  {autoSaveStatus === "saved" && (
+                    <span className="flex items-center gap-1 text-xs text-primary-foreground/60 shrink-0">
+                      <Save className="w-3 h-3" /> Saved
+                    </span>
+                  )}
+                  {autoSaveStatus === "error" && (
+                    <span className="text-xs text-red-300 shrink-0">Save failed</span>
+                  )}
 
                   {/* Collaborator: leave trip */}
                   {!isOwner && id && (

@@ -146,6 +146,16 @@ export const getPendingInvites = async (): Promise<PendingInvite[]> => {
   return (data ?? []) as unknown as PendingInvite[];
 };
 
+/** Get the profile of the trip's owner */
+export const getTripOwnerProfile = async (tripId: string): Promise<{ display_name: string | null; handle: string | null; avatar_url: string | null } | null> => {
+  const { data } = await supabase
+    .from("trips")
+    .select("profiles!trips_user_id_fkey(display_name, handle, avatar_url)")
+    .eq("id", tripId)
+    .maybeSingle();
+  return (data?.profiles as { display_name: string | null; handle: string | null; avatar_url: string | null } | null) ?? null;
+};
+
 /** Get pending invite count for the current user */
 export const getPendingInviteCount = async (userId: string): Promise<number> => {
   const { data } = await supabase.rpc("get_pending_invites_count", { p_user_id: userId });
