@@ -173,10 +173,10 @@ const ProfilePage = () => {
             // Guest mode — serve entirely from localStorage
             if (cancelled) return;
             setProfile({ id: 'guest', display_name: null, handle: null, avatar_url: null, bio: null });
-            const [trips, bucket] = await Promise.all([loadTrips(), loadBucketList()]);
+            const trips = await loadTrips();
             if (cancelled) return;
             setDiaryTrips(trips.filter(t => !t.isBucketList));
-            setBucketList(bucket);
+            setBucketList(trips.filter(t => t.isBucketList));
             return;
           }
 
