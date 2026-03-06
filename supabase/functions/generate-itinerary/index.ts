@@ -33,6 +33,7 @@ interface TripFormData {
 }
 
 interface ResolvedCity {
+  dbId: string | null;
   iataCode: string;
   cityName: string;
   countryCode: string;
@@ -141,12 +142,13 @@ async function resolveCity(
   // DB cache first
   const { data: cached } = await supabase
     .from("destinations")
-    .select("iata_code, name, country_code, country_name, latitude, longitude")
+    .select("id, iata_code, name, country_code, country_name, latitude, longitude")
     .ilike("name", cityName)
     .maybeSingle();
 
   if (cached?.iata_code) {
     return {
+      dbId: cached.id ?? null,
       iataCode: cached.iata_code.trim(),
       cityName: cached.name,
       countryCode: (cached.country_code ?? "").trim(),
@@ -167,6 +169,7 @@ async function resolveCity(
 
   const loc = data[0];
   const resolved: ResolvedCity = {
+    dbId: null,
     iataCode: loc.iataCode,
     cityName: loc.address?.cityName ?? cityName,
     countryCode: loc.address?.countryCode ?? "",
@@ -175,21 +178,25 @@ async function resolveCity(
     lng: loc.geoCode?.longitude ?? 0,
   };
 
-  // Cache (fire & forget — don't block on failures)
-  supabase.from("destinations").insert({
-    name: resolved.cityName,
-    country_code: resolved.countryCode,
-    country_name: resolved.countryName,
-    latitude: resolved.lat,
-    longitude: resolved.lng,
-    iata_code: resolved.iataCode.slice(0, 3),
-    language: null,
-    region: null,
-    timezone: null,
-    currency_code: null,
-  }).then(() => {}).catch(() => {});
+  // Cache and capture the row id for FK linking
+  let dbId: string | null = null;
+  try {
+    const { data: inserted } = await supabase.from("destinations").insert({
+      name: resolved.cityName,
+      country_code: resolved.countryCode,
+      country_name: resolved.countryName,
+      latitude: resolved.lat,
+      longitude: resolved.lng,
+      iata_code: resolved.iataCode.slice(0, 3),
+      language: null,
+      region: null,
+      timezone: null,
+      currency_code: null,
+    }).select("id").single();
+    dbId = inserted?.id ?? null;
+  } catch { /* non-critical */ }
 
-  return resolved;
+  return { ...resolved, dbId };
 }
 
 async function fetchHotels(
@@ -201,6 +208,7 @@ async function fetchHotels(
   comfortLevel: number,
   token: string,
   supabase: ReturnType<typeof createClient>,
+  destinationDbId: string | null = null,
 ): Promise<HotelOption[]> {
   // Step 1 — hotel list by city code
   const listR = await fetch(
@@ -239,18 +247,24 @@ async function fetchHotels(
         hotelId: h.hotel.hotelId,
       };
 
-      // Cache hotel (fire & forget)
+      // Cache hotel + amenities (fire & forget)
+      const rawAmenities: string[] = h.hotel?.amenities ?? [];
       supabase.from("hotels").insert({
         provider_id: hotel.hotelId,
         provider: "amadeus",
         name: hotel.name,
+        destination_id: destinationDbId,
         city: cityCode,
         country_code: destCountryCode.slice(0, 2),
         star_rating: hotel.stars,
         address: hotel.address,
         active: true,
         last_verified: new Date().toISOString(),
-      }).then(() => {}).catch(() => {});
+      }).select("id").single().then(({ data: row }: { data: { id: string } | null }) => {
+        if (!row?.id || rawAmenities.length === 0) return;
+        const amenityRows = rawAmenities.map((tag: string) => ({ hotel_id: row.id, amenity_tag: tag }));
+        supabase.from("hotel_amenities").insert(amenityRows).then(() => {}).catch(() => {});
+      }).catch(() => {});
 
       return hotel;
     });
@@ -362,9 +376,29 @@ function buildPrompt(form: TripFormData, real: RealData | null): string {
   const comfortName = COMFORT_NAMES[form.comfort_level - 1] ?? "Standard";
   const comfortEmoji = COMFORT_EMOJIS[form.comfort_level - 1] ?? "⭐";
   const prefs = form.preferences.length > 0 ? form.preferences.join(", ") : "general sightseeing";
-  const kidsNote = form.kids > 0 ? `\n- Kids: ${form.kids} (include kid-friendly activities)` : "";
+  const kidsNote = form.kids > 0 ? `\n- Kids: ${form.kids} (include kid-friendly activities throughout)` : "";
   const totalPax = form.travelers + form.kids;
+  const today = new Date().toISOString().split("T")[0];
 
+  const comfortDescriptions: Record<number, string> = {
+    1: "Nomad — cheapest possible trip. Free or near-free activities, hostels or budget guesthouses, public transport only, budget airlines. Minimize every expense.",
+    2: "Smart — comfortable but cost-conscious. 2-3★ hotels, mix of public and occasional private transport, economy flights. Be smart about every expense.",
+    3: "Balanced — the standard reference. 3-4★ hotels, good mix of public and private transport, economy or premium economy flight. Real local experiences, not just tourist traps.",
+    4: "Comfort — elevated experience. 4-5★ hotels, private transfers where appropriate, business class or premium economy flights. Extra comforts and priority access.",
+    5: "Luxury — money is no object. 5★ or boutique hotels, private car/driver, business or first class flights. Only the best — but still report all prices accurately.",
+  };
+
+  const groupTypeNotes: Record<string, string> = {
+    solo: "Solo traveler — prioritize safety, solo-friendly venues, social hostels or boutique hotels, activities where meeting locals/other travelers is natural. Respect solo dining norms.",
+    couple: "Couple — romantic atmosphere matters. Intimate dining, couple-friendly activities, double room. Balance adventure with relaxed moments together.",
+    family: "Family with kids — strictly kid-friendly venues, manageable walking distances, family rooms, earlier dinners (18:00–19:00), educational but fun activities, avoid late-night venues.",
+    friends: "Group of friends — social and fun atmosphere, group-suitable accommodation, mix of activities and leisure, nightlife if dates/preferences fit, value for money on group bookings.",
+    business: "Business traveler — efficient itinerary, proximity to city center/business districts, business-class hotels with good Wi-Fi, professional transport, minimal time wasted.",
+  };
+
+  const groupNote = groupTypeNotes[form.group_type] ?? `Group type: ${form.group_type}`;
+
+  // Real data section
   let realSection = "";
   if (real && (real.flights.length > 0 || real.hotels.length > 0)) {
     const parts: string[] = ["\n═══ REAL API DATA — use these exact values ═══"];
@@ -372,28 +406,47 @@ function buildPrompt(form: TripFormData, real: RealData | null): string {
     if (real.flights.length > 0) {
       parts.push(`\nFLIGHT OPTIONS (choose ONE letter — that selects BOTH the outbound AND return leg):`);
       parts.push(...real.flights.map(f => flightLine(f, totalPax)));
-      parts.push(`\nIn the itinerary JSON, use the EXACT airline name, flight number, and departure/arrival times from your chosen option.`);
+      parts.push(`Use the EXACT airline name, flight number, and departure/arrival times from your chosen option in the itinerary JSON.`);
+    } else {
+      parts.push(`\nNo live flight data — search for realistic flights between airports near ${form.departure_city} and ${form.destination_city}. Be flexible ±3 days on dates if needed.`);
     }
 
     if (real.hotels.length > 0) {
       parts.push(`\nHOTEL OPTIONS (choose ONE for the ${nights} nights):`);
       parts.push(...real.hotels.map(h => hotelLine(h)));
-      parts.push(`\nUse the EXACT hotel name and nightly price from your chosen option.`);
+      parts.push(`Use the EXACT hotel name and nightly price from your chosen option.`);
+    } else {
+      parts.push(`\nNo live hotel data — search for realistic ${comfortName.toLowerCase()}-tier accommodation in ${form.destination_city}.`);
     }
 
     realSection = parts.join("\n");
+  } else {
+    realSection = `\n═══ NO LIVE API DATA ═══\nSearch for actual flights and accommodation for this route and dates. Be specific with real options.`;
   }
 
-  return `Generate a complete, realistic travel itinerary as JSON.
+  return `You are a travel planning AI. Create a highly personalized, realistic, and well-researched travel itinerary.
+Today's date: ${today}
 
-TRIP:
+# USER INPUT
 - Route: ${form.departure_city} → ${form.destination_city} (round trip)
 - Dates: ${dates[0]} to ${dates[numDays - 1]} (${numDays} days, ${nights} nights)
-- Adults: ${form.travelers}, Group: ${form.group_type}, Comfort: ${form.comfort_level}/5 (${comfortName})
-- Interests: ${prefs}, Passport: ${form.passport_country}${kidsNote}
+- Adults: ${form.travelers}${form.kids > 0 ? `, Kids: ${form.kids}` : ""}, Group: ${form.group_type}
+- Comfort Level: ${form.comfort_level}/5 — ${comfortDescriptions[form.comfort_level]}
+- Interests: ${prefs}
+- Passport: ${form.passport_country}${kidsNote}
+
+# GROUP PROFILE
+${groupNote}
+
+# RESEARCH — use your search capability to find:
+- Visa/entry requirements for ${form.passport_country} passport holders entering ${form.destination_city} — note this in the accommodation check-in activity
+- Current weather and seasonal conditions in ${form.destination_city} around ${dates[0]} — adjust outdoor activities accordingly
+- Trending, highly-rated, and locally-loved attractions, restaurants, and experiences in ${form.destination_city}
+- Local transport options and typical prices (metro, bus, taxi, rideshare, airport transfers)${real?.flights.length ? "" : `\n- Actual flights between airports near ${form.departure_city} and ${form.destination_city} around ${dates[0]} (±3 days flexible)`}${real?.hotels.length ? "" : `\n- ${comfortName}-tier accommodation options in ${form.destination_city}`}
+- Any travel advisories or practical entry tips for ${form.passport_country} citizens
 ${realSection}
 
-OUTPUT — return ONLY this JSON (no markdown, no explanation):
+# OUTPUT — return ONLY this JSON (no markdown, no explanation):
 {
   "destination": "${form.destination_city}",
   "dates": "${dates[0]} - ${dates[numDays - 1]}",
@@ -416,33 +469,38 @@ OUTPUT — return ONLY this JSON (no markdown, no explanation):
     {
       "day": 1,
       "date": "${dates[0]}",
-      "theme": "<short theme>",
+      "theme": "<short engaging theme for the day>",
       "activities": [
         {
           "time": "HH:MM",
-          "name": "<name>",
+          "name": "<specific real venue or event name>",
           "type": "<flight|transport|accommodation|dining|sightseeing|activity|shopping|cafe>",
           "duration": "<e.g. 2h 30m>",
-          "location": "<venue or place>",
+          "location": "<venue name or neighborhood>",
           "cost": <per-person USD, 0 if free>,
-          "notes": "<optional>",
+          "notes": "<practical tip, visa note, or booking advice>",
           "image_url": "<Unsplash URL or omit>",
           "rating": <0-5 or omit>,
-          "booking_url": "<URL or omit>"
+          "booking_url": "<direct booking URL or omit>",
+          "address": "<street address or omit>",
+          "website": "<venue website or omit>"
         }
       ]
     }
-    // ... ${numDays} days total, dates: ${dates.join(" | ")}
+    // ... ${numDays} days total — dates in order: ${dates.join(", ")}
   ]
 }
 
-RULES:
+# RULES
 1. Day 1 MUST start with outbound flight (type "flight") from ${form.departure_city}
 2. Day ${numDays} (${dates[numDays - 1]}) MUST end with return flight (type "flight") to ${form.departure_city}
-3. Include accommodation check-in day 1 (after flight) and check-out day ${numDays} (before return)
-4. 4–6 activities per day, times in 24h HH:MM, strictly increasing each day
-5. Costs per-person USD, realistic for ${form.destination_city} at comfort ${form.comfort_level}/5
-6. No markdown fences, no text outside the JSON`;
+3. Include accommodation check-in day 1 (after flight) and check-out day ${numDays} (before return flight)
+4. 4–6 activities per day, times in 24h HH:MM, strictly increasing within each day
+5. All costs per person in USD, realistic for ${form.destination_city} at comfort level ${form.comfort_level}/5
+6. Group activities geographically — cluster nearby attractions to minimize unnecessary travel
+7. Use real venue names, real addresses, and real booking URLs where possible
+8. Adapt all activities to the group type: ${form.group_type}
+9. No markdown fences, no text outside the JSON`;
 }
 
 // ─── xAI ──────────────────────────────────────────────────────────────────────
@@ -526,10 +584,26 @@ serve(async (req) => {
                 destination.iataCode, destination.countryCode,
                 dates[0], dates[dates.length - 1],
                 form.travelers, form.comfort_level,
-                token, supabase,
+                token, supabase, destination.dbId,
               ).catch((e: Error) => { console.error("Amadeus hotels:", e.message); return [] as HotelOption[]; })
             : Promise.resolve([] as HotelOption[]),
         ]);
+
+        // Cache flight routes (fire & forget)
+        for (const f of flights) {
+          const dm = f.outDuration.match(/(?:(\d+)h)?\s*(?:(\d+)m)?/);
+          const durationMin = dm ? (Number(dm[1] ?? 0) * 60 + Number(dm[2] ?? 0)) || null : null;
+          supabase.from("flight_routes").insert({
+            airline_iata: f.outFlightNo.slice(0, 2) || null,
+            airline_name: f.outAirline,
+            origin_iata: origin!.iataCode.slice(0, 3),
+            destination_iata: destination!.iataCode.slice(0, 3),
+            typical_duration_min: durationMin,
+            typical_stops: f.outStops,
+            active: true,
+            last_verified: new Date().toISOString(),
+          }).then(() => {}).catch(() => {});
+        }
 
         real = { origin, destination, flights, hotels };
         console.log(`Real data: ${flights.length} flight options, ${hotels.length} hotel options`);
