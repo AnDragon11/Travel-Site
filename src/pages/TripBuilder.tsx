@@ -17,7 +17,7 @@ import {
   Plane, Hotel, Utensils, Camera, MapPin, Clock, Plus, Trash2, Pencil, Save,
   Ticket, Coffee, ShoppingBag, Bus, Car, Train, Footprints, ImagePlus,
   Calendar, Users, ArrowLeft, GripVertical, Heart, Tag, Share2, LogOut, Link2,
-  ChevronDown, Upload, X as XIcon,
+  ChevronDown, Upload, X as XIcon, ExternalLink, Undo2, Redo2,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -62,6 +62,7 @@ export interface BuilderActivity {
   cost: number;
   notes: string;
   image_url: string;
+  booking_url?: string;     // Link to booking page
   photos?: string[];        // Additional photos for trip diary
   review?: string;          // User review of this activity
   transportType: string;
@@ -108,6 +109,7 @@ const createEmptyActivity = (): BuilderActivity => ({
   cost: 0,
   notes: "",
   image_url: "",
+  booking_url: "",
   transportType: "walk",
   transportDuration: "10 min",
 });
@@ -226,6 +228,18 @@ const BuilderSlot = ({
           <span className="text-[11px] text-muted-foreground">{activity.duration}</span>
           {activity.cost > 0 && <span className="text-xs font-semibold text-foreground">€{activity.cost}</span>}
         </div>
+        {activity.booking_url && (
+          <a
+            href={activity.booking_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="flex items-center gap-1 mt-1.5 pt-1.5 border-t border-border/30 text-[10px] text-primary hover:text-primary/80 hover:underline w-fit"
+          >
+            <ExternalLink className="w-2.5 h-2.5 shrink-0" />
+            View Link
+          </a>
+        )}
       </div>
     </div>
 
@@ -254,7 +268,7 @@ const AddSlotCard = ({
     onDragOver={onDragOver}
     onDrop={onDrop}
     className={cn(
-      "flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-border/60 hover:border-primary/50 transition-all duration-200 w-[200px] h-[240px] shrink-0 bg-muted hover:bg-muted/80 cursor-pointer group ml-4",
+      "flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-border/60 hover:border-primary/50 transition-all duration-200 w-[200px] h-[240px] shrink-0 bg-muted hover:bg-muted/80 cursor-pointer group",
       isDragOver && "ring-2 ring-primary ring-offset-2 border-primary"
     )}
   >
@@ -300,8 +314,34 @@ const ActivityDialog = ({
   const [form, setForm] = useState<BuilderActivity>(activity);
   const originalRef = useRef<BuilderActivity>(activity);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isFetchingImage, setIsFetchingImage] = useState(false);
 
   useEffect(() => { originalRef.current = activity; setForm(activity); }, [activity]);
+
+  const fetchLinkImage = async () => {
+    const url = form.booking_url?.trim();
+    if (!url) return;
+    setIsFetchingImage(true);
+    try {
+      const proxy = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+      const resp = await fetch(proxy, { signal: AbortSignal.timeout(8000) });
+      const data = await resp.json();
+      const html: string = data.contents ?? "";
+      const match =
+        html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i) ??
+        html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i);
+      if (match?.[1]) {
+        updateForm({ image_url: match[1] });
+        toast.success("Image fetched from link!");
+      } else {
+        toast.error("No preview image found at this URL");
+      }
+    } catch {
+      toast.error("Could not fetch image from link");
+    } finally {
+      setIsFetchingImage(false);
+    }
+  };
 
   // In edit mode: immediately propagate every change to the trip (triggers auto-save).
   // In add mode: changes stay local until "Add Activity" is clicked.
@@ -443,6 +483,43 @@ const ActivityDialog = ({
                 <Label>Notes</Label>
                 <Textarea value={form.notes} onChange={(e) => updateForm({ notes: e.target.value })} placeholder="Booking tips, visa notes, opening hours..." rows={2} />
               </div>
+
+              {/* Booking URL */}
+              <div className="space-y-1.5">
+                <Label className="flex items-center gap-1.5">
+                  <ExternalLink className="w-3.5 h-3.5 text-muted-foreground" />
+                  Booking Link
+                </Label>
+                <div className="flex gap-2">
+                  <Input
+                    value={form.booking_url || ""}
+                    onChange={(e) => updateForm({ booking_url: e.target.value })}
+                    placeholder="https://booking.com/..."
+                    className="flex-1 text-sm"
+                  />
+                  {form.booking_url?.trim() && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={isFetchingImage}
+                      onClick={fetchLinkImage}
+                      title="Fetch preview image from this link"
+                    >
+                      {isFetchingImage ? (
+                        <span className="w-3.5 h-3.5 border border-current border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <ImagePlus className="w-3.5 h-3.5" />
+                      )}
+                    </Button>
+                  )}
+                </div>
+                {form.booking_url?.trim() && (
+                  <a href={form.booking_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs text-primary hover:underline w-fit">
+                    <ExternalLink className="w-3 h-3" /> Open link
+                  </a>
+                )}
+              </div>
             </div>
 
             {/* ── Right: image + live preview ── */}
@@ -534,6 +611,13 @@ const TripBuilder = () => {
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const tripLoadedRef = useRef(false); // true once trip is fully loaded; prevents double-load on authLoading change
+
+  // Undo / Redo history (up to 10 steps)
+  const undoStackRef = useRef<SavedTrip[]>([]);
+  const redoStackRef = useRef<SavedTrip[]>([]);
+  const prevTripRef = useRef<SavedTrip | null>(null); // previous trip value for history tracking
+  const [historySize, setHistorySize] = useState(0);
+  const [futureSize, setFutureSize] = useState(0);
 
   const [trip, setTrip] = useState<SavedTrip>({
     id: crypto.randomUUID(),
@@ -700,8 +784,17 @@ const TripBuilder = () => {
   useEffect(() => {
     if (skipAutoSaveRef.current > 0) {
       skipAutoSaveRef.current--;
+      prevTripRef.current = trip; // keep prev in sync for programmatic changes
       return;
     }
+    // User-initiated change: push previous trip state to undo history
+    if (prevTripRef.current !== null) {
+      undoStackRef.current = [...undoStackRef.current.slice(-9), prevTripRef.current];
+      redoStackRef.current = [];
+      setHistorySize(undoStackRef.current.length);
+      setFutureSize(0);
+    }
+    prevTripRef.current = trip;
     // Never auto-save a brand-new trip in its default empty state — only save once
     // the user has actually added something (title, destination, or any named activity)
     if (!id) {
@@ -900,6 +993,67 @@ const TripBuilder = () => {
     });
   };
 
+  // ─── Day Date with auto-populate ───────────────────────────────
+  const handleDayDateChange = (dayId: string, dateStr: string) => {
+    if (!dateStr) {
+      setTrip(p => ({ ...p, days: p.days.map(d => d.id === dayId ? { ...d, date: dateStr } : d) }));
+      return;
+    }
+    const changedIdx = trip.days.findIndex(d => d.id === dayId);
+    if (changedIdx < 0) return;
+    const base = new Date(dateStr + "T00:00:00");
+    setTrip(p => ({
+      ...p,
+      days: p.days.map((d, i) => {
+        const offset = i - changedIdx;
+        const dt = new Date(base);
+        dt.setDate(base.getDate() + offset);
+        return { ...d, date: dt.toISOString().split("T")[0] };
+      }),
+    }));
+  };
+
+  // ─── Undo / Redo ───────────────────────────────────────────────
+  const handleUndo = () => {
+    if (undoStackRef.current.length === 0) return;
+    const prev = undoStackRef.current[undoStackRef.current.length - 1];
+    redoStackRef.current = [...redoStackRef.current, trip];
+    undoStackRef.current = undoStackRef.current.slice(0, -1);
+    setHistorySize(undoStackRef.current.length);
+    setFutureSize(redoStackRef.current.length);
+    skipAutoSaveRef.current++;
+    prevTripRef.current = prev;
+    setTrip(prev);
+  };
+
+  const handleRedo = () => {
+    if (redoStackRef.current.length === 0) return;
+    const next = redoStackRef.current[redoStackRef.current.length - 1];
+    undoStackRef.current = [...undoStackRef.current, trip];
+    redoStackRef.current = redoStackRef.current.slice(0, -1);
+    setHistorySize(undoStackRef.current.length);
+    setFutureSize(redoStackRef.current.length);
+    skipAutoSaveRef.current++;
+    prevTripRef.current = next;
+    setTrip(next);
+  };
+
+  // Stable refs so keyboard handler never goes stale
+  const undoHandlerRef = useRef(handleUndo);
+  const redoHandlerRef = useRef(handleRedo);
+  undoHandlerRef.current = handleUndo;
+  redoHandlerRef.current = handleRedo;
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      if (e.key === "z" && !e.shiftKey) { e.preventDefault(); undoHandlerRef.current(); }
+      else if (e.key === "y" || (e.key === "z" && e.shiftKey)) { e.preventDefault(); redoHandlerRef.current(); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   const handleCopyLink = () => {
     const url = `${window.location.origin}/trip/${id}`;
     navigator.clipboard.writeText(url)
@@ -957,6 +1111,7 @@ const TripBuilder = () => {
   const PADDING = 24;
   const ROW_HEIGHT = 320;
   const ARC_RADIUS = 30;
+  const TOP_OFFSET = 80; // extra space at top for Day 1 badge
 
   const availableWidth = containerWidth - PADDING * 2;
   const slotsPerRow = Math.max(1, Math.floor((availableWidth + GAP + TRANSPORT_WIDTH) / SLOT_WITH_GAP));
@@ -1013,8 +1168,8 @@ const TripBuilder = () => {
       const rowWidth = getRowWidth(slotCount);
       // RTL rows are right-aligned so the last activity aligns with the right edge
       const rowLeft = isRTL ? PADDING + availableWidth - rowWidth : PADDING;
-      const yCenter = rowIndex * ROW_HEIGHT + ROW_HEIGHT / 2;
-      const top = rowIndex * ROW_HEIGHT + (ROW_HEIGHT - SLOT_HEIGHT) / 2;
+      const yCenter = rowIndex * ROW_HEIGHT + ROW_HEIGHT / 2 + TOP_OFFSET;
+      const top = rowIndex * ROW_HEIGHT + (ROW_HEIGHT - SLOT_HEIGHT) / 2 + TOP_OFFSET;
       // Path enters from the direction the snake is coming from
       const startEdgeX = isRTL ? PADDING + availableWidth : PADDING;
       const endEdgeX = isRTL ? PADDING + availableWidth - rowWidth : PADDING + rowWidth;
@@ -1022,7 +1177,7 @@ const TripBuilder = () => {
     });
   }, [allRows, containerWidth]);
 
-  const svgHeight = allRows.length * ROW_HEIGHT;
+  const svgHeight = allRows.length * ROW_HEIGHT + TOP_OFFSET;
 
   const snakePath = useMemo(() => {
     if (rowLayouts.length === 0) return "";
@@ -1030,7 +1185,14 @@ const TripBuilder = () => {
     const parts: string[] = [];
     rowLayouts.forEach((row, idx) => {
       if (row.slotCount === 0) return;
-      if (idx === 0) parts.push(`M ${row.startEdgeX} ${row.yCenter}`);
+      if (idx === 0) {
+        // Start from Day 1 badge at top center, drop down to first row
+        const badgeCx = containerWidth / 2;
+        const badgeBottomY = TOP_OFFSET / 2 + 22;
+        parts.push(`M ${badgeCx} ${badgeBottomY}`);
+        parts.push(`L ${badgeCx} ${row.yCenter}`);
+        parts.push(`L ${row.startEdgeX} ${row.yCenter}`);
+      }
       parts.push(`L ${row.endEdgeX} ${row.yCenter}`);
       const next = rowLayouts[idx + 1];
       if (!next || next.slotCount === 0) return;
@@ -1077,14 +1239,18 @@ const TripBuilder = () => {
     return parts.join(" ");
   }, [rowLayouts]);
 
-  // Day badge positions (between rows when day changes)
+  // Day badge positions (between rows when day changes; Day 1 at top center)
   const dayBadgePositions = useMemo(() => {
     const positions: { x: number; y: number; day: BuilderDay }[] = [];
     rowLayouts.forEach((row, idx) => {
-      if (!row.isFirstRowOfDay || row.dayIndex === 0) return;
-      const prev = rowLayouts[idx - 1];
-      if (!prev) return;
-      positions.push({ x: containerWidth / 2, y: (prev.yCenter + row.yCenter) / 2, day: row.day });
+      if (!row.isFirstRowOfDay) return;
+      if (row.dayIndex === 0) {
+        positions.push({ x: containerWidth / 2, y: TOP_OFFSET / 2, day: row.day });
+      } else {
+        const prev = rowLayouts[idx - 1];
+        if (!prev) return;
+        positions.push({ x: containerWidth / 2, y: (prev.yCenter + row.yCenter) / 2, day: row.day });
+      }
     });
     return positions;
   }, [rowLayouts, containerWidth]);
@@ -1106,14 +1272,14 @@ const TripBuilder = () => {
           {/* Base gradient background */}
           <div className="absolute inset-0 bg-gradient-to-br from-primary to-primary/80" />
 
-          {/* Thumbnail — right half, fades into the gradient */}
+          {/* Thumbnail — right 45%, strong left gradient ensures text readability */}
           {trip.thumbnail && (
             <>
               <div
-                className="absolute right-0 top-0 bottom-0 w-3/5 md:w-1/2"
+                className="absolute right-0 top-0 bottom-0 w-[45%]"
                 style={{ backgroundImage: `url(${trip.thumbnail})`, backgroundSize: "cover", backgroundPosition: "center" }}
               />
-              <div className="absolute inset-0 bg-gradient-to-r from-primary via-primary/85 to-primary/20" />
+              <div className="absolute inset-0 bg-gradient-to-r from-primary from-[52%] via-primary/80 via-[65%] to-transparent" />
             </>
           )}
 
@@ -1167,45 +1333,7 @@ const TripBuilder = () => {
                       <span className="text-sm text-primary-foreground/70">travelers</span>
                     </div>
 
-                    {/* Favorite */}
-                    <button
-                      type="button"
-                      onClick={() => setTrip((p) => ({ ...p, isFavorite: !p.isFavorite }))}
-                      className="flex items-center gap-1.5 bg-primary-foreground/10 hover:bg-primary-foreground/20 rounded-lg px-3 py-1.5 transition-colors"
-                    >
-                      <Heart className={cn("w-4 h-4", trip.isFavorite ? "fill-red-400 text-red-400" : "text-primary-foreground/70")} />
-                      <span className="text-sm text-primary-foreground/70">{trip.isFavorite ? "Favorited" : "Favorite"}</span>
-                    </button>
                   </div>
-
-                  {/* Overview toggle */}
-                  {keyActivities.length > 0 && (
-                    <button
-                      onClick={() => setOverviewOpen(v => !v)}
-                      className="flex items-center gap-1.5 text-xs text-primary-foreground/70 hover:text-primary-foreground transition-colors"
-                    >
-                      <ChevronDown className={cn("w-3.5 h-3.5 transition-transform", overviewOpen && "rotate-180")} />
-                      {overviewOpen ? "Hide overview" : "Show overview"}
-                    </button>
-                  )}
-
-                  {/* Overview panel */}
-                  {overviewOpen && keyActivities.length > 0 && (
-                    <div className="bg-primary-foreground/10 backdrop-blur-sm rounded-xl p-3 space-y-1.5 mt-1">
-                      {keyActivities.map((a) => (
-                        <div key={a.id} className="flex items-center gap-2.5 text-sm">
-                          {a.type === "flight"
-                            ? <Plane className="w-3.5 h-3.5 text-sky-300 shrink-0" />
-                            : <Hotel className="w-3.5 h-3.5 text-blue-300 shrink-0" />
-                          }
-                          <span className="text-primary-foreground/60 text-xs shrink-0 w-14">{a.dayLabel}</span>
-                          <span className="text-primary-foreground/60 text-xs shrink-0 w-10">{a.time}</span>
-                          <span className="text-primary-foreground font-medium truncate">{a.name}</span>
-                          {a.location && <span className="text-primary-foreground/50 text-xs truncate hidden sm:block">{a.location}</span>}
-                        </div>
-                      ))}
-                    </div>
-                  )}
                 </div>
 
                 <div className="flex items-center gap-3">
@@ -1273,6 +1401,39 @@ const TripBuilder = () => {
           </div>
         </section>
 
+        {/* Trip overview — collapsible strip below hero */}
+        {keyActivities.length > 0 && (
+          <div className="bg-card border-b border-border">
+            <div className="container mx-auto px-4">
+              <div className="max-w-6xl mx-auto">
+                <button
+                  onClick={() => setOverviewOpen(v => !v)}
+                  className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors py-2.5 w-full text-left"
+                >
+                  <ChevronDown className={cn("w-3.5 h-3.5 transition-transform shrink-0", overviewOpen && "rotate-180")} />
+                  {overviewOpen ? "Hide trip overview" : "Show trip overview"}
+                  <span className="ml-1 text-muted-foreground/60">({keyActivities.length} key activities)</span>
+                </button>
+                {overviewOpen && (
+                  <div className="pb-3 grid sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
+                    {keyActivities.map((a) => (
+                      <div key={a.id} className="flex items-center gap-2.5 text-sm bg-muted/50 rounded-lg px-3 py-2">
+                        {a.type === "flight"
+                          ? <Plane className="w-3.5 h-3.5 text-sky-500 shrink-0" />
+                          : <Hotel className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                        }
+                        <span className="text-muted-foreground text-xs shrink-0 w-14">{a.dayLabel}</span>
+                        <span className="text-muted-foreground text-xs shrink-0 w-10">{a.time}</span>
+                        <span className="text-foreground font-medium truncate text-xs">{a.name}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Pending invite banner */}
         {pendingInviteId && (
           <div className="bg-amber-50 dark:bg-amber-950/30 border-b border-amber-200 dark:border-amber-800 px-4 py-3">
@@ -1296,37 +1457,33 @@ const TripBuilder = () => {
         <section className="py-6 pb-12">
           <div className="container mx-auto px-4">
             <div className="max-w-6xl mx-auto" ref={containerRef}>
-              <div className="flex items-center mb-6">
+              <div className="flex items-center justify-between mb-6">
                 <h2 className="text-xl font-bold text-foreground flex items-center gap-2">
                   <Clock className="w-5 h-5 text-primary" /> Your Journey
                 </h2>
-              </div>
-
-              {/* First day header */}
-              {trip.days.length > 0 && (
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="w-12 h-12 rounded-full bg-primary text-primary-foreground font-bold text-lg flex items-center justify-center shadow-lg">1</div>
-                  <div className="flex-1">
-                    <input
-                      value={trip.days[0].date}
-                      onChange={(e) => setTrip((p) => ({ ...p, days: p.days.map((d, i) => i === 0 ? { ...d, date: e.target.value } : d) }))}
-                      className="text-lg font-bold text-foreground bg-transparent border-none outline-none placeholder:text-muted-foreground w-48"
-                      placeholder="Date (e.g. Jan 15)"
-                    />
-                    <input
-                      value={trip.days[0].theme}
-                      onChange={(e) => setTrip((p) => ({ ...p, days: p.days.map((d, i) => i === 0 ? { ...d, theme: e.target.value } : d) }))}
-                      className="text-sm text-muted-foreground bg-transparent border-none outline-none placeholder:text-muted-foreground block"
-                      placeholder="Day theme"
-                    />
-                  </div>
-                  {trip.days.length > 1 && (
-                    <Button variant="ghost" size="icon" className="text-destructive hover:bg-destructive/10" onClick={() => removeDay(trip.days[0].id)}>
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  )}
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="w-8 h-8 text-muted-foreground hover:text-foreground disabled:opacity-30"
+                    disabled={historySize === 0}
+                    onClick={handleUndo}
+                    title={`Undo (${historySize} step${historySize !== 1 ? "s" : ""}) — Ctrl+Z`}
+                  >
+                    <Undo2 className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="w-8 h-8 text-muted-foreground hover:text-foreground disabled:opacity-30"
+                    disabled={futureSize === 0}
+                    onClick={handleRedo}
+                    title={`Redo (${futureSize} step${futureSize !== 1 ? "s" : ""}) — Ctrl+Y`}
+                  >
+                    <Redo2 className="w-4 h-4" />
+                  </Button>
                 </div>
-              )}
+              </div>
 
               {/* Journey Canvas */}
               <div className="relative" style={{ height: svgHeight }}>
@@ -1345,19 +1502,22 @@ const TripBuilder = () => {
                 {/* Day badges on connector lines */}
                 {dayBadgePositions.map((pos, idx) => {
                   const dayIndex = trip.days.findIndex((d) => d.id === pos.day.id);
+                  const isFirst = dayIndex === 0;
                   return (
-                    <div key={idx} className="absolute flex items-center gap-2 bg-background px-3 py-1.5 rounded-full shadow-lg border border-border z-20" style={{ left: pos.x, top: pos.y, transform: "translate(-50%, -50%)" }}>
-                      <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground font-bold text-sm flex items-center justify-center">{dayIndex + 1}</div>
+                    <div key={idx} className="absolute flex items-center gap-2.5 bg-background px-4 py-2 rounded-full shadow-lg border border-border z-20" style={{ left: pos.x, top: pos.y, transform: "translate(-50%, -50%)" }}>
+                      <div className="w-10 h-10 rounded-full bg-primary text-primary-foreground font-bold text-base flex items-center justify-center shrink-0">{dayIndex + 1}</div>
                       <input
+                        type="date"
                         value={pos.day.date}
-                        onChange={(e) => setTrip((p) => ({ ...p, days: p.days.map((d) => d.id === pos.day.id ? { ...d, date: e.target.value } : d) }))}
-                        className="text-sm font-semibold text-foreground bg-transparent border-none outline-none w-24"
-                        placeholder="Date"
+                        onChange={(e) => handleDayDateChange(pos.day.id, e.target.value)}
+                        className="text-base font-semibold text-foreground bg-transparent border-none outline-none w-36"
                         onClick={(e) => e.stopPropagation()}
                       />
-                      <Button variant="ghost" size="icon" className="w-6 h-6 text-destructive hover:bg-destructive/10" onClick={() => removeDay(pos.day.id)}>
-                        <Trash2 className="w-3 h-3" />
-                      </Button>
+                      {(!isFirst || trip.days.length > 1) && (
+                        <Button variant="ghost" size="icon" className="w-6 h-6 text-destructive hover:bg-destructive/10 shrink-0" onClick={() => removeDay(pos.day.id)}>
+                          <Trash2 className="w-3 h-3" />
+                        </Button>
+                      )}
                     </div>
                   );
                 })}
@@ -1367,7 +1527,8 @@ const TripBuilder = () => {
                   <div key={`row-${row.rowIndex}`} className={cn("absolute flex items-center", row.isRTL && "flex-row-reverse")} style={{ top: row.top, left: row.rowLeft, width: row.rowWidth }}>
                     {row.slots.map((slot, slotIndex) => {
                       const isAdd = slot === "add";
-                      const showTransport = slotIndex > 0 && !isAdd;
+                      // Show transport/gap before any slot (including add) after the first
+                      const showTransport = slotIndex > 0;
                       const activity = isAdd ? null : (slot as BuilderActivity);
 
                       // Find the global activity index within the day
@@ -1400,9 +1561,9 @@ const TripBuilder = () => {
 
                       return (
                         <div key={isAdd ? `add-${row.dayIndex}` : activity!.id} className="flex items-center">
-                          {showTransport && activity && (
+                          {showTransport && (
                             <div className="flex items-center justify-center" style={{ width: GAP + TRANSPORT_WIDTH }}>
-                              <TransportBubble type={activity.transportType} duration={activity.transportDuration} />
+                              {!isAdd && activity && <TransportBubble type={activity.transportType} duration={activity.transportDuration} />}
                             </div>
                           )}
                           {isAdd ? (
