@@ -5,12 +5,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { UserPlus, X, Clock, CheckCircle, Loader2, Users } from "lucide-react";
+import { UserPlus, X, Clock, CheckCircle, Loader2, Users, Crown } from "lucide-react";
 import {
   Collaborator,
   getCollaborators,
   inviteByHandle,
   removeCollaborator,
+  transferOwnership,
 } from "@/services/collaboratorService";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -114,6 +115,17 @@ const ShareTripModal = ({ open, onClose, tripId, tripTitle }: ShareTripModalProp
     }
   };
 
+  const handleTransferOwnership = async (collab: Collaborator) => {
+    if (!confirm(`Transfer ownership to @${collab.profile.handle ?? collab.profile.display_name}? You'll become a collaborator.`)) return;
+    try {
+      await transferOwnership(tripId, collab.user_id);
+      toast.success(`@${collab.profile.handle ?? collab.profile.display_name} is now the owner`);
+      onClose();
+    } catch {
+      toast.error("Failed to transfer ownership");
+    }
+  };
+
   const alreadyInvited = (profileId: string) =>
     collaborators.some(c => c.user_id === profileId);
 
@@ -191,7 +203,7 @@ const ShareTripModal = ({ open, onClose, tripId, tripTitle }: ShareTripModalProp
                       <p className="text-xs text-muted-foreground">@{c.profile.handle}</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5">
                     {c.status === "pending" ? (
                       <span className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded-full">
                         <Clock className="w-3 h-3" /> Pending
@@ -200,6 +212,15 @@ const ShareTripModal = ({ open, onClose, tripId, tripTitle }: ShareTripModalProp
                       <span className="flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full">
                         <CheckCircle className="w-3 h-3" /> Active
                       </span>
+                    )}
+                    {c.status === "accepted" && (
+                      <button
+                        onClick={() => handleTransferOwnership(c)}
+                        className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-amber-500 transition-all p-0.5 rounded"
+                        title="Make owner"
+                      >
+                        <Crown className="w-3.5 h-3.5" />
+                      </button>
                     )}
                     <button
                       onClick={() => handleRemove(c)}

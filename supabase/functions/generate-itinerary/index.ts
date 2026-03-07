@@ -506,6 +506,46 @@ ${realSection}
 // ─── xAI ──────────────────────────────────────────────────────────────────────
 
 async function callXAI(prompt: string): Promise<string> {
+  // Use the Responses API (supports built-in web_search tool)
+  const r = await fetch("https://api.x.ai/v1/responses", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${XAI_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: XAI_MODEL,
+      input: [
+        { role: "system", content: "You are a travel planning AI. Respond with valid JSON only — no markdown, no prose." },
+        { role: "user", content: prompt },
+      ],
+      temperature: 0.7,
+      max_output_tokens: 8000,
+      tools: [{ type: "web_search" }],
+    }),
+  });
+  if (!r.ok) {
+    const errText = await r.text();
+    // Fall back to standard chat completions if Responses API isn't available for this model
+    return callXAIFallback(prompt, errText);
+  }
+  const data = await r.json();
+  // Responses API: output is an array of message objects
+  const outputItems: any[] = data.output ?? [];
+  for (const item of outputItems) {
+    if (item.type === "message" || item.role === "assistant") {
+      const contentArr: any[] = Array.isArray(item.content) ? item.content : [];
+      for (const c of contentArr) {
+        if (c.type === "output_text" || c.type === "text") return c.text ?? c.content ?? "";
+      }
+      if (typeof item.content === "string") return item.content;
+    }
+  }
+  throw new Error("Empty response from AI");
+}
+
+async function callXAIFallback(prompt: string, originalError: string): Promise<string> {
+  console.warn("Responses API failed, falling back to chat/completions:", originalError.slice(0, 200));
   const r = await fetch("https://api.x.ai/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -520,7 +560,6 @@ async function callXAI(prompt: string): Promise<string> {
       ],
       temperature: 0.7,
       max_tokens: 8000,
-      search_parameters: { mode: "auto" },
     }),
   });
   if (!r.ok) throw new Error(`xAI ${r.status}: ${await r.text()}`);

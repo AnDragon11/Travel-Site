@@ -119,7 +119,8 @@ const saveSupabaseTrip = async (trip: SavedTrip, userId: string): Promise<void> 
     photos: trip.photos ?? null,
     tags: trip.tags ?? null,
     ai_metadata: (trip.aiMetadata ?? null) as unknown as Json,
-    updated_at: new Date().toISOString(),
+    // Use the trip's own updatedAt so Realtime comparisons can detect self-saves
+    updated_at: trip.updatedAt || new Date().toISOString(),
   }, { onConflict: "id" });
   if (error) throw new Error(error.message);
 };

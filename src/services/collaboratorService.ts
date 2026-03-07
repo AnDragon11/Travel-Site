@@ -49,16 +49,28 @@ export const getCollaborators = async (tripId: string): Promise<Collaborator[]> 
 
 /** Returns 'owner' | 'editor' | null (pending/not involved) for the current user on a trip */
 export const getTripRole = async (tripId: string, userId: string): Promise<"owner" | "editor" | null> => {
+  // Check ownership via the trips table directly (authoritative source)
+  const { data: ownedTrip } = await supabase
+    .from("trips")
+    .select("id")
+    .eq("id", tripId)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (ownedTrip) return "owner";
+
+  // Check collaborator status
   const { data } = await supabase
     .from("trip_collaborators")
     .select("role, status")
     .eq("trip_id", tripId)
     .eq("user_id", userId)
-    .single();
+    .maybeSingle();
 
-  if (!data) return "owner"; // not in collaborators = they own it (or it's not their trip at all)
+  if (!data) return null;
+  if (data.role === "owner") return "owner"; // safety
   if (data.status === "accepted") return "editor";
-  return null;
+  return null; // pending
 };
 
 /** Invite a user by handle to collaborate on a trip */
@@ -130,8 +142,11 @@ export const leaveTrip = async (tripId: string): Promise<void> => {
   if (error) throw new Error(error.message);
 };
 
-/** Get pending invites for the current user */
+/** Get pending invites for the current user (only invites received, not sent) */
 export const getPendingInvites = async (): Promise<PendingInvite[]> => {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return [];
+
   const { data, error } = await supabase
     .from("trip_collaborators")
     .select(`
@@ -139,11 +154,41 @@ export const getPendingInvites = async (): Promise<PendingInvite[]> => {
       invited_by_profile:profiles!trip_collaborators_invited_by_fkey(display_name, handle, avatar_url),
       trip:trips!trip_collaborators_trip_id_fkey(title, destination)
     `)
+    .eq("user_id", session.user.id)
     .eq("status", "pending")
     .order("invited_at", { ascending: false });
 
   if (error) throw new Error(error.message);
   return (data ?? []) as unknown as PendingInvite[];
+};
+
+/**
+ * Transfer trip ownership to an accepted collaborator.
+ * The new owner is removed from trip_collaborators; the old owner is added as an accepted editor.
+ */
+export const transferOwnership = async (tripId: string, newOwnerId: string): Promise<void> => {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error("Not signed in");
+
+  // Transfer ownership in trips table
+  const { error } = await supabase
+    .from("trips")
+    .update({ user_id: newOwnerId })
+    .eq("id", tripId);
+  if (error) throw new Error(error.message);
+
+  // Remove new owner from collaborators (they're now the trip owner)
+  await supabase.from("trip_collaborators").delete().eq("trip_id", tripId).eq("user_id", newOwnerId);
+
+  // Add old owner as an accepted collaborator so they retain access
+  await supabase.from("trip_collaborators").insert({
+    trip_id: tripId,
+    user_id: session.user.id,
+    role: "editor",
+    status: "accepted",
+    invited_by: newOwnerId,
+    accepted_at: new Date().toISOString(),
+  }).onConflict("trip_id,user_id").ignore();
 };
 
 /** Get the profile of the trip's owner */

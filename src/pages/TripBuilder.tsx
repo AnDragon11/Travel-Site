@@ -90,7 +90,7 @@ import { SavedTrip } from "@/lib/tripTypes";
 import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  Collaborator, getCollaborators, getTripRole, leaveTrip, getTripOwnerProfile,
+  Collaborator, getCollaborators, getTripRole, leaveTrip, getTripOwnerProfile, transferOwnership,
 } from "@/services/collaboratorService";
 import ShareTripModal from "@/components/ShareTripModal";
 import CollaboratorAvatars from "@/components/CollaboratorAvatars";
@@ -311,117 +311,162 @@ const ActivityDialog = ({
   };
 
   const imagePreview = form.image_url || placeholderImages[form.type] || placeholderImages.activity;
+  const typeConfig = activityTypeConfig[form.type] ?? activityTypeConfig.activity;
+  const TypeIcon = typeConfig.icon;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{activity.name ? "Edit Activity" : "Add Activity"}</DialogTitle>
-          <DialogDescription>Fill in the details for this activity slot.</DialogDescription>
+      <DialogContent className="w-full max-w-lg md:max-w-2xl lg:max-w-3xl max-h-[92vh] overflow-hidden flex flex-col p-0">
+        <DialogHeader className="px-6 pt-6 pb-0 shrink-0">
+          <DialogTitle className="flex items-center gap-2">
+            <span className={cn("p-1.5 rounded-lg", typeConfig.bgColor)}>
+              <TypeIcon className={cn("w-4 h-4", typeConfig.color)} />
+            </span>
+            {activity.name ? "Edit Activity" : "Add Activity"}
+          </DialogTitle>
+          <DialogDescription className="sr-only">Fill in the details for this activity.</DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 py-2">
-          {/* Type */}
-          <div className="space-y-1.5">
-            <Label>Type</Label>
-            <Select value={form.type} onValueChange={(v) => setForm((p) => ({ ...p, type: v }))}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {Object.entries(activityTypeConfig).map(([key, cfg]) => {
-                  const Icon = cfg.icon;
-                  return (
-                    <SelectItem key={key} value={key}>
-                      <span className="flex items-center gap-2">
-                        <Icon className={cn("w-4 h-4", cfg.color)} />
+        <div className="flex-1 overflow-y-auto">
+          <div className="grid lg:grid-cols-[1fr_260px] gap-0 divide-y lg:divide-y-0 lg:divide-x divide-border">
+            {/* ── Left: form ── */}
+            <div className="p-6 space-y-4">
+              {/* Type selector — visual icon row */}
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground uppercase tracking-wide">Type</Label>
+                <div className="flex flex-wrap gap-1.5">
+                  {Object.entries(activityTypeConfig).map(([key, cfg]) => {
+                    const Icon = cfg.icon;
+                    const active = form.type === key;
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => setForm(p => ({ ...p, type: key }))}
+                        className={cn(
+                          "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-all",
+                          active
+                            ? cn("border-transparent", cfg.bgColor, cfg.color)
+                            : "border-border bg-background text-muted-foreground hover:border-border/80 hover:text-foreground"
+                        )}
+                      >
+                        <Icon className="w-3.5 h-3.5" />
                         {cfg.label}
-                      </span>
-                    </SelectItem>
-                  );
-                })}
-              </SelectContent>
-            </Select>
-          </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
 
-          {/* Name */}
-          <div className="space-y-1.5">
-            <Label>Name *</Label>
-            <Input value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} placeholder="e.g. Visit Eiffel Tower" />
-          </div>
+              {/* Name */}
+              <div className="space-y-1.5">
+                <Label>Name <span className="text-destructive">*</span></Label>
+                <Input
+                  value={form.name}
+                  onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
+                  placeholder="e.g. Visit Eiffel Tower"
+                  autoFocus
+                />
+              </div>
 
-          {/* Time + Duration row */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label>Time</Label>
-              <Input type="time" value={form.time} onChange={(e) => setForm((p) => ({ ...p, time: e.target.value }))} />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Duration</Label>
-              <Input value={form.duration} onChange={(e) => setForm((p) => ({ ...p, duration: e.target.value }))} placeholder="e.g. 2h" />
-            </div>
-          </div>
+              {/* Time + Duration + Cost in one row */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Time</Label>
+                  <Input type="time" value={form.time} onChange={(e) => setForm((p) => ({ ...p, time: e.target.value }))} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Duration</Label>
+                  <Input value={form.duration} onChange={(e) => setForm((p) => ({ ...p, duration: e.target.value }))} placeholder="2h" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Cost (€)</Label>
+                  <Input type="number" min={0} value={form.cost || ""} onChange={(e) => setForm((p) => ({ ...p, cost: Number(e.target.value) || 0 }))} placeholder="0" />
+                </div>
+              </div>
 
-          {/* Location */}
-          <div className="space-y-1.5">
-            <Label>Location</Label>
-            <Input value={form.location} onChange={(e) => setForm((p) => ({ ...p, location: e.target.value }))} placeholder="e.g. Champ de Mars, Paris" />
-          </div>
+              {/* Location */}
+              <div className="space-y-1.5">
+                <Label>Location</Label>
+                <Input value={form.location} onChange={(e) => setForm((p) => ({ ...p, location: e.target.value }))} placeholder="e.g. Champ de Mars, Paris" />
+              </div>
 
-          {/* Cost */}
-          <div className="space-y-1.5">
-            <Label>Cost (€)</Label>
-            <Input type="number" min={0} value={form.cost || ""} onChange={(e) => setForm((p) => ({ ...p, cost: Number(e.target.value) || 0 }))} placeholder="0" />
-          </div>
+              {/* Transport (if not first) */}
+              {!isFirst && (
+                <div className="space-y-1.5 p-3 rounded-lg bg-muted/50 border border-border/50">
+                  <Label className="text-xs text-muted-foreground">Transport to this activity</Label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Select value={form.transportType} onValueChange={(v) => setForm((p) => ({ ...p, transportType: v }))}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {transportTypes.map((t) => (
+                          <SelectItem key={t.value} value={t.value}>
+                            <span className="flex items-center gap-2"><t.icon className="w-3.5 h-3.5" />{t.label}</span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Input value={form.transportDuration} onChange={(e) => setForm((p) => ({ ...p, transportDuration: e.target.value }))} placeholder="15 min" />
+                  </div>
+                </div>
+              )}
 
-          {/* Image */}
-          <div className="space-y-1.5">
-            <Label>Image</Label>
-            <div className="flex gap-2">
-              <Input value={form.image_url?.startsWith("data:") ? "(uploaded)" : form.image_url} onChange={(e) => setForm((p) => ({ ...p, image_url: e.target.value }))} placeholder="Paste URL or upload" className="flex-1" />
-              <Button type="button" variant="outline" size="icon" onClick={() => fileInputRef.current?.click()}>
-                <ImagePlus className="w-4 h-4" />
-              </Button>
-              <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
-            </div>
-            <div className="w-full h-24 rounded-lg overflow-hidden border border-border/50 bg-muted">
-              <img src={imagePreview} alt="Preview" className="w-full h-full object-cover" />
-            </div>
-          </div>
-
-          {/* Transport (if not first) */}
-          {!isFirst && (
-            <div className="space-y-1.5 p-3 rounded-lg bg-muted/50 border border-border/50">
-              <Label className="text-xs text-muted-foreground">Transport to this activity</Label>
-              <div className="grid grid-cols-2 gap-3">
-                <Select value={form.transportType} onValueChange={(v) => setForm((p) => ({ ...p, transportType: v }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {transportTypes.map((t) => (
-                      <SelectItem key={t.value} value={t.value}>
-                        <span className="flex items-center gap-2">
-                          <t.icon className="w-3.5 h-3.5" />
-                          {t.label}
-                        </span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Input value={form.transportDuration} onChange={(e) => setForm((p) => ({ ...p, transportDuration: e.target.value }))} placeholder="e.g. 15 min" />
+              {/* Notes */}
+              <div className="space-y-1.5">
+                <Label>Notes</Label>
+                <Textarea value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} placeholder="Booking tips, visa notes, opening hours..." rows={2} />
               </div>
             </div>
-          )}
 
-          {/* Notes */}
-          <div className="space-y-1.5">
-            <Label>Notes</Label>
-            <Textarea value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} placeholder="Any additional notes..." rows={2} />
+            {/* ── Right: image + live preview ── */}
+            <div className="p-6 space-y-4 bg-muted/20">
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground uppercase tracking-wide">Image</Label>
+                <div className="relative w-full aspect-video rounded-xl overflow-hidden border border-border/50 bg-muted group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
+                  <img src={imagePreview} alt="Preview" className="w-full h-full object-cover" />
+                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    <ImagePlus className="w-6 h-6 text-white" />
+                  </div>
+                </div>
+                <Input
+                  value={form.image_url?.startsWith("data:") ? "" : form.image_url}
+                  onChange={(e) => setForm((p) => ({ ...p, image_url: e.target.value }))}
+                  placeholder="Paste image URL…"
+                  className="text-xs h-8"
+                />
+                <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
+              </div>
+
+              {/* Mini card preview */}
+              <div className="space-y-1.5">
+                <p className="text-xs text-muted-foreground uppercase tracking-wide">Preview</p>
+                <div className={cn("rounded-xl border p-3 text-sm space-y-1", typeConfig.bgColor)}>
+                  <div className={cn("flex items-center gap-1.5 font-semibold", typeConfig.color)}>
+                    <TypeIcon className="w-3.5 h-3.5 shrink-0" />
+                    <span className="truncate">{form.name || "Activity name"}</span>
+                  </div>
+                  {form.location && (
+                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                      <MapPin className="w-3 h-3 shrink-0" />
+                      <span className="truncate">{form.location}</span>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-3 text-xs text-muted-foreground pt-0.5">
+                    {form.time && <span className="flex items-center gap-0.5"><Clock className="w-3 h-3" />{form.time}</span>}
+                    {form.duration && <span>{form.duration}</span>}
+                    {form.cost > 0 && <span className="ml-auto font-semibold text-foreground">€{form.cost}</span>}
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="px-6 py-4 border-t border-border shrink-0">
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button onClick={handleSave}>
             <Save className="w-4 h-4 mr-1" />
-            Save
+            Save Activity
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -441,7 +486,8 @@ const TripBuilder = () => {
 
   // Collaboration state
   const [collaborators, setCollaborators] = useState<Collaborator[]>([]);
-  const [isOwner, setIsOwner] = useState(true);
+  const [isOwner, setIsOwner] = useState<boolean | null>(null); // null = role not yet determined
+  const [pendingInviteId, setPendingInviteId] = useState<string | null>(null); // current user has pending invite for this trip
   const [ownerProfile, setOwnerProfile] = useState<{ display_name: string | null; handle: string | null; avatar_url: string | null } | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
 
@@ -498,19 +544,41 @@ const TripBuilder = () => {
   // Determine role, load collaborators, and resolve owner profile
   useEffect(() => {
     if (!user) return;
-    // Owner profile from current user's metadata (shown even without an id)
-    setOwnerProfile({
-      display_name: user.user_metadata?.display_name ?? null,
-      handle: user.user_metadata?.handle ?? null,
-      avatar_url: user.user_metadata?.avatar_url ?? null,
-    });
-    if (!id) return;
-    getTripRole(id, user.id).then(async role => {
-      const isOwn = role === "owner";
-      setIsOwner(isOwn);
-      if (!isOwn) {
-        // Collaborator — fetch owner profile from DB
+
+    // New unsaved trip — current user is always the owner
+    if (!id) {
+      setIsOwner(true);
+      setOwnerProfile({
+        display_name: user.user_metadata?.display_name ?? null,
+        handle: user.user_metadata?.handle ?? null,
+        avatar_url: user.user_metadata?.avatar_url ?? null,
+      });
+      return;
+    }
+
+    getTripRole(id, user.id).then(role => {
+      if (role === "owner") {
+        setIsOwner(true);
+        setOwnerProfile({
+          display_name: user.user_metadata?.display_name ?? null,
+          handle: user.user_metadata?.handle ?? null,
+          avatar_url: user.user_metadata?.avatar_url ?? null,
+        });
+      } else if (role === "editor") {
+        setIsOwner(false);
         getTripOwnerProfile(id).then(p => { if (p) setOwnerProfile(p); }).catch(() => {});
+      } else {
+        // null = pending invite or no access — show pending invite banner
+        setIsOwner(false);
+        getTripOwnerProfile(id).then(p => { if (p) setOwnerProfile(p); }).catch(() => {});
+        // Find this user's pending invite id for the accept button
+        supabase.from("trip_collaborators")
+          .select("id")
+          .eq("trip_id", id)
+          .eq("user_id", user.id)
+          .eq("status", "pending")
+          .maybeSingle()
+          .then(({ data }) => { if (data) setPendingInviteId(data.id); });
       }
     });
     getCollaborators(id).then(setCollaborators).catch(() => {});
@@ -571,6 +639,9 @@ const TripBuilder = () => {
       try {
         const updated = { ...trip, updatedAt: new Date().toISOString() };
         await saveToStorage(updated);
+        // Sync local updatedAt to what was written to DB so Realtime can detect self-saves
+        skipAutoSaveRef.current++;
+        setTrip(prev => ({ ...prev, updatedAt: updated.updatedAt }));
         setAutoSaveStatus("saved");
         savedTimerRef.current = setTimeout(() => setAutoSaveStatus("idle"), 2500);
         // For new trips, mark as loaded before navigating so the load effect doesn't re-fetch
@@ -703,11 +774,41 @@ const TripBuilder = () => {
   const handleLeaveTrip = async () => {
     if (!id) return;
     try {
-      await leaveTrip(id);
-      toast.success("You've left the trip");
-      navigate("/profile?tab=bucket");
+      if (isOwner) {
+        // Transfer to oldest accepted collaborator before leaving
+        const accepted = collaborators
+          .filter(c => c.status === "accepted")
+          .sort((a, b) => new Date(a.accepted_at ?? a.invited_at).getTime() - new Date(b.accepted_at ?? b.invited_at).getTime());
+        if (accepted.length === 0) {
+          toast.error("You're the only person on this trip. Delete it instead.");
+          return;
+        }
+        await transferOwnership(id, accepted[0].user_id);
+        toast.success(`Ownership transferred to @${accepted[0].profile.handle ?? accepted[0].profile.display_name}`);
+      } else {
+        await leaveTrip(id);
+        toast.success("You've left the trip");
+      }
+      navigate("/profile");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to leave trip");
+    }
+  };
+
+  const handleAcceptInvite = async () => {
+    if (!pendingInviteId) return;
+    try {
+      const { error } = await supabase
+        .from("trip_collaborators")
+        .update({ status: "accepted", accepted_at: new Date().toISOString() })
+        .eq("id", pendingInviteId);
+      if (error) throw error;
+      setPendingInviteId(null);
+      setIsOwner(false);
+      getCollaborators(id!).then(setCollaborators).catch(() => {});
+      toast.success("You've joined the trip!");
+    } catch {
+      toast.error("Failed to accept invite");
     }
   };
 
@@ -922,7 +1023,7 @@ const TripBuilder = () => {
                   )}
 
                   {/* Collaborator: leave trip */}
-                  {!isOwner && id && (
+                  {isOwner === false && id && (
                     <Button
                       variant="ghost"
                       size="sm"
@@ -937,6 +1038,25 @@ const TripBuilder = () => {
             </div>
           </div>
         </section>
+
+        {/* Pending invite banner */}
+        {pendingInviteId && (
+          <div className="bg-amber-50 dark:bg-amber-950/30 border-b border-amber-200 dark:border-amber-800 px-4 py-3">
+            <div className="container mx-auto max-w-6xl flex items-center justify-between gap-4">
+              <p className="text-sm text-amber-800 dark:text-amber-300">
+                <span className="font-semibold">{ownerProfile?.display_name ?? ownerProfile?.handle ?? "Someone"}</span> invited you to collaborate on this trip.
+              </p>
+              <div className="flex items-center gap-2 shrink-0">
+                <Button size="sm" onClick={handleAcceptInvite} className="gap-1.5">
+                  Accept & Join
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => navigate("/profile")} className="text-amber-700 dark:text-amber-400">
+                  Decline
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Journey Section */}
         <section className="py-6 pb-12">
