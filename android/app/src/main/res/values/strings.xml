@@ -2,6 +2,6 @@
 <resources>
     <string name="app_name">DiaryTrips</string>
     <string name="title_activity_main">DiaryTrips</string>
-    <string name="package_name">com.diarytips.app</string>
-    <string name="custom_url_scheme">com.diarytips.app</string>
+    <string name="package_name">com.diarytrips.app</string>
+    <string name="custom_url_scheme">com.diarytrips.app</string>
 </resources>

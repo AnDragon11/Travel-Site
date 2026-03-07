@@ -1,4 +1,4 @@
-package com.diarytips.app;
+package com.diarytrips.app;
 
 import com.getcapacitor.BridgeActivity;
 
