@@ -702,6 +702,15 @@ const TripBuilder = () => {
       skipAutoSaveRef.current--;
       return;
     }
+    // Never auto-save a brand-new trip in its default empty state — only save once
+    // the user has actually added something (title, destination, or any named activity)
+    if (!id) {
+      const hasContent =
+        trip.title.trim() !== "" && trip.title !== "My Trip" ||
+        trip.destination.trim() !== "" ||
+        trip.days.some(d => d.activities.some(a => a.name.trim() !== ""));
+      if (!hasContent) return;
+    }
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
     setAutoSaveStatus("saving");
