@@ -277,24 +277,44 @@ const ActivityDialog = ({
   activity,
   onSave,
   isFirst,
+  isEditing = false,
+  onLiveSave,
+  onRevert,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   activity: BuilderActivity;
   onSave: (a: BuilderActivity) => void;
   isFirst: boolean;
+  isEditing?: boolean;
+  onLiveSave?: (a: BuilderActivity) => void;
+  onRevert?: (original: BuilderActivity) => void;
 }) => {
   const [form, setForm] = useState<BuilderActivity>(activity);
+  const originalRef = useRef<BuilderActivity>(activity);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => { setForm(activity); }, [activity]);
+  useEffect(() => { originalRef.current = activity; setForm(activity); }, [activity]);
 
-  const handleSave = () => {
+  // In edit mode: immediately propagate every change to the trip (triggers auto-save).
+  // In add mode: changes stay local until "Add Activity" is clicked.
+  const updateForm = (updates: Partial<BuilderActivity>) => {
+    const updated = { ...form, ...updates };
+    setForm(updated);
+    if (isEditing) onLiveSave?.(updated);
+  };
+
+  const handleCommit = () => {
     if (!form.name.trim()) {
       toast.error("Activity name is required");
       return;
     }
     onSave(form);
+    onOpenChange(false);
+  };
+
+  const handleCancel = () => {
+    if (isEditing) onRevert?.(originalRef.current);
     onOpenChange(false);
   };
 
@@ -306,7 +326,7 @@ const ActivityDialog = ({
       return;
     }
     const reader = new FileReader();
-    reader.onloadend = () => setForm((p) => ({ ...p, image_url: reader.result as string }));
+    reader.onloadend = () => updateForm({ image_url: reader.result as string });
     reader.readAsDataURL(file);
   };
 
@@ -315,14 +335,14 @@ const ActivityDialog = ({
   const TypeIcon = typeConfig.icon;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(v) => { if (!v) handleCancel(); }}>
       <DialogContent className="w-full max-w-lg md:max-w-2xl lg:max-w-3xl max-h-[92vh] overflow-hidden flex flex-col p-0">
         <DialogHeader className="px-6 pt-6 pb-0 shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <span className={cn("p-1.5 rounded-lg", typeConfig.bgColor)}>
               <TypeIcon className={cn("w-4 h-4", typeConfig.color)} />
             </span>
-            {activity.name ? "Edit Activity" : "Add Activity"}
+            {isEditing ? "Edit Activity" : "Add Activity"}
           </DialogTitle>
           <DialogDescription className="sr-only">Fill in the details for this activity.</DialogDescription>
         </DialogHeader>
@@ -342,7 +362,7 @@ const ActivityDialog = ({
                       <button
                         key={key}
                         type="button"
-                        onClick={() => setForm(p => ({ ...p, type: key }))}
+                        onClick={() => updateForm({ type: key })}
                         className={cn(
                           "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-all",
                           active
@@ -363,7 +383,7 @@ const ActivityDialog = ({
                 <Label>Name <span className="text-destructive">*</span></Label>
                 <Input
                   value={form.name}
-                  onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
+                  onChange={(e) => updateForm({ name: e.target.value })}
                   placeholder="e.g. Visit Eiffel Tower"
                   autoFocus
                 />
@@ -373,22 +393,22 @@ const ActivityDialog = ({
               <div className="grid grid-cols-3 gap-3">
                 <div className="space-y-1.5">
                   <Label className="text-xs">Time</Label>
-                  <Input type="time" value={form.time} onChange={(e) => setForm((p) => ({ ...p, time: e.target.value }))} />
+                  <Input type="time" value={form.time} onChange={(e) => updateForm({ time: e.target.value })} />
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs">Duration</Label>
-                  <Input value={form.duration} onChange={(e) => setForm((p) => ({ ...p, duration: e.target.value }))} placeholder="2h" />
+                  <Input value={form.duration} onChange={(e) => updateForm({ duration: e.target.value })} placeholder="2h" />
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs">Cost (€)</Label>
-                  <Input type="number" min={0} value={form.cost || ""} onChange={(e) => setForm((p) => ({ ...p, cost: Number(e.target.value) || 0 }))} placeholder="0" />
+                  <Input type="number" min={0} value={form.cost || ""} onChange={(e) => updateForm({ cost: Number(e.target.value) || 0 })} placeholder="0" />
                 </div>
               </div>
 
               {/* Location */}
               <div className="space-y-1.5">
                 <Label>Location</Label>
-                <Input value={form.location} onChange={(e) => setForm((p) => ({ ...p, location: e.target.value }))} placeholder="e.g. Champ de Mars, Paris" />
+                <Input value={form.location} onChange={(e) => updateForm({ location: e.target.value })} placeholder="e.g. Champ de Mars, Paris" />
               </div>
 
               {/* Transport (if not first) */}
@@ -396,7 +416,7 @@ const ActivityDialog = ({
                 <div className="space-y-1.5 p-3 rounded-lg bg-muted/50 border border-border/50">
                   <Label className="text-xs text-muted-foreground">Transport to this activity</Label>
                   <div className="grid grid-cols-2 gap-3">
-                    <Select value={form.transportType} onValueChange={(v) => setForm((p) => ({ ...p, transportType: v }))}>
+                    <Select value={form.transportType} onValueChange={(v) => updateForm({ transportType: v })}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
                         {transportTypes.map((t) => (
@@ -406,7 +426,7 @@ const ActivityDialog = ({
                         ))}
                       </SelectContent>
                     </Select>
-                    <Input value={form.transportDuration} onChange={(e) => setForm((p) => ({ ...p, transportDuration: e.target.value }))} placeholder="15 min" />
+                    <Input value={form.transportDuration} onChange={(e) => updateForm({ transportDuration: e.target.value })} placeholder="15 min" />
                   </div>
                 </div>
               )}
@@ -414,7 +434,7 @@ const ActivityDialog = ({
               {/* Notes */}
               <div className="space-y-1.5">
                 <Label>Notes</Label>
-                <Textarea value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} placeholder="Booking tips, visa notes, opening hours..." rows={2} />
+                <Textarea value={form.notes} onChange={(e) => updateForm({ notes: e.target.value })} placeholder="Booking tips, visa notes, opening hours..." rows={2} />
               </div>
             </div>
 
@@ -430,7 +450,7 @@ const ActivityDialog = ({
                 </div>
                 <Input
                   value={form.image_url?.startsWith("data:") ? "" : form.image_url}
-                  onChange={(e) => setForm((p) => ({ ...p, image_url: e.target.value }))}
+                  onChange={(e) => updateForm({ image_url: e.target.value })}
                   placeholder="Paste image URL…"
                   className="text-xs h-8"
                 />
@@ -463,11 +483,17 @@ const ActivityDialog = ({
         </div>
 
         <DialogFooter className="px-6 py-4 border-t border-border shrink-0">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={handleSave}>
-            <Save className="w-4 h-4 mr-1" />
-            Save Activity
-          </Button>
+          <Button variant="outline" onClick={handleCancel}>Cancel</Button>
+          {isEditing ? (
+            <Button onClick={() => onOpenChange(false)}>
+              Done
+            </Button>
+          ) : (
+            <Button onClick={handleCommit}>
+              <Save className="w-4 h-4 mr-1" />
+              Add Activity
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -751,6 +777,34 @@ const TripBuilder = () => {
         } else {
           acts[editingIndex] = a;
         }
+        return { ...d, activities: acts };
+      }),
+    }));
+  };
+
+  // Live-save: called on every field change when editing an existing activity
+  const handleLiveSaveActivity = (a: BuilderActivity) => {
+    if (editingIndex < 0) return;
+    setTrip((p) => ({
+      ...p,
+      days: p.days.map((d) => {
+        if (d.id !== editingDayId) return d;
+        const acts = [...d.activities];
+        acts[editingIndex] = a;
+        return { ...d, activities: acts };
+      }),
+    }));
+  };
+
+  // Revert: called on Cancel when editing — restores the original activity state
+  const handleRevertActivity = (original: BuilderActivity) => {
+    if (editingIndex < 0) return;
+    setTrip((p) => ({
+      ...p,
+      days: p.days.map((d) => {
+        if (d.id !== editingDayId) return d;
+        const acts = [...d.activities];
+        acts[editingIndex] = original;
         return { ...d, activities: acts };
       }),
     }));
@@ -1322,6 +1376,9 @@ const TripBuilder = () => {
         onOpenChange={setDialogOpen}
         activity={editingActivity}
         onSave={handleSaveActivity}
+        isEditing={editingIndex >= 0}
+        onLiveSave={handleLiveSaveActivity}
+        onRevert={handleRevertActivity}
         isFirst={editingIndex === 0 || (editingIndex === -1 && (trip.days.find((d) => d.id === editingDayId)?.activities.length || 0) === 0)}
       />
     </div>
