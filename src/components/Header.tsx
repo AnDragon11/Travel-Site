@@ -1,19 +1,14 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Menu, X, Compass, Briefcase, Globe, LogOut, Sun, Moon, User } from "lucide-react";
+import { Compass, Briefcase, Globe } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/context/AuthContext";
-import { useTheme } from "next-themes";
 import UserMenu from "./UserMenu";
-import { toast } from "sonner";
 import { getPendingInviteCount } from "@/services/collaboratorService";
 
 const Header = () => {
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const location = useLocation();
-  const navigate = useNavigate();
-  const { user, signOut, loading } = useAuth();
-  const { theme, setTheme } = useTheme();
+  const { user, loading } = useAuth();
   const [inviteCount, setInviteCount] = useState(0);
 
   useEffect(() => {
@@ -28,13 +23,6 @@ const Header = () => {
   ];
 
   const isActive = (path: string) => location.pathname === path;
-
-  const handleSignOut = async () => {
-    setIsMenuOpen(false);
-    await signOut();
-    toast.success("Signed out");
-    navigate("/");
-  };
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-lg border-b border-border/50">
@@ -80,101 +68,8 @@ const Header = () => {
             )}
           </div>
 
-          {/* Mobile hamburger */}
-          <div className="md:hidden flex items-center gap-2">
-            <button
-              className="p-2 text-foreground"
-              onClick={() => setIsMenuOpen(!isMenuOpen)}
-              aria-label="Toggle menu"
-            >
-              {isMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-            </button>
-          </div>
+          {/* Mobile: no hamburger — BottomNav handles all navigation */}
         </div>
-
-        {/* Mobile Navigation */}
-        {isMenuOpen && (
-          <nav className="md:hidden py-4 border-t border-border/50 animate-fade-in">
-            <div className="flex flex-col gap-1">
-              {navLinks.map((link) => (
-                <Link
-                  key={link.href}
-                  to={link.href}
-                  className={`px-3 py-2.5 rounded-lg flex items-center gap-2 ${isActive(link.href) ? "nav-link-active bg-accent" : "nav-link"}`}
-                  onClick={() => setIsMenuOpen(false)}
-                >
-                  {link.label === "Profile" && <Briefcase className="w-4 h-4" />}
-                  {link.label === "Explore" && <Globe className="w-4 h-4" />}
-                  {link.label}
-                  {link.label === "Profile" && inviteCount > 0 && (
-                    <span className="ml-0.5 w-4 h-4 bg-destructive text-destructive-foreground text-[10px] font-bold rounded-full flex items-center justify-center">{inviteCount > 9 ? "9+" : inviteCount}</span>
-                  )}
-                </Link>
-              ))}
-
-              {!loading && (
-                <div className="mt-2 pt-2 border-t border-border/50 space-y-1">
-                  {/* User identity row */}
-                  <div className="flex items-center gap-2 px-3 py-2">
-                    <div className={`w-7 h-7 rounded-full overflow-hidden flex items-center justify-center text-xs font-bold shrink-0 ${user ? "bg-primary text-primary-foreground" : "bg-muted-foreground/20 text-muted-foreground"}`}>
-                      {user?.user_metadata?.avatar_url
-                        ? <img src={user.user_metadata.avatar_url} alt="" className="w-full h-full object-cover" />
-                        : user ? (user.user_metadata?.display_name || user.email || "").slice(0, 2).toUpperCase() : "G"}
-                    </div>
-                    <span className="text-sm font-medium text-foreground truncate">
-                      {user ? (user.user_metadata?.display_name || user.email) : "Guest"}
-                    </span>
-                  </div>
-
-                  {/* Profile — auth only */}
-                  {user && (
-                    <Link
-                      to="/profile-settings"
-                      onClick={() => setIsMenuOpen(false)}
-                      className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm nav-link"
-                    >
-                      <User className="w-4 h-4" /> Profile Settings
-                    </Link>
-                  )}
-
-                  {/* Theme toggle */}
-                  <button
-                    onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-                    className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm nav-link text-left"
-                  >
-                    {theme === "dark"
-                      ? <><Sun className="w-4 h-4" /> Light Mode</>
-                      : <><Moon className="w-4 h-4" /> Dark Mode</>
-                    }
-                  </button>
-
-                  {/* Sign In / Sign Out */}
-                  {user ? (
-                    <button
-                      onClick={handleSignOut}
-                      className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm text-destructive hover:bg-destructive/10 transition-colors text-left"
-                    >
-                      <LogOut className="w-4 h-4" /> Sign Out
-                    </button>
-                  ) : (
-                    <>
-                      <Link
-                        to="/login"
-                        onClick={() => setIsMenuOpen(false)}
-                        className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm nav-link"
-                      >
-                        <LogOut className="w-4 h-4 rotate-180" /> Sign In
-                      </Link>
-                      <Button asChild variant="default" className="w-full mt-1">
-                        <Link to="/signup" onClick={() => setIsMenuOpen(false)}>Sign Up</Link>
-                      </Button>
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
-          </nav>
-        )}
       </div>
     </header>
   );

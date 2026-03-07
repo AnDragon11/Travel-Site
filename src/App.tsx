@@ -21,6 +21,7 @@ import Signup from "./pages/Signup";
 
 import ProtectedRoute from "./components/ProtectedRoute";
 import NotFound from "./pages/NotFound";
+import BottomNav from "./components/BottomNav";
 
 class ErrorBoundary extends React.Component<
   { children: React.ReactNode },
@@ -69,21 +70,25 @@ const App = () => (
               <Toaster />
               <Sonner />
               <BrowserRouter>
-                <Routes>
-                  <Route path="/" element={<Planner />} />
-                  <Route path="/explore" element={<Explore />} />
-                  <Route path="/login" element={<Login />} />
-                  <Route path="/signup" element={<Signup />} />
-                  <Route path="/profile" element={<ProfilePage />} />
-                  <Route path="/profile-settings" element={<ProtectedRoute><ProfileSettings /></ProtectedRoute>} />
-                  <Route path="/user/:handle" element={<ProfilePage />} />
-                  <Route path="/trip" element={<TripBuilder />} />
-                  <Route path="/trip/:id" element={<TripBuilder />} />
-                  <Route path="/builder" element={<Navigate to="/trip" replace />} />
-                  <Route path="/builder/:id" element={<BuilderIdRedirect />} />
-                  {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-                  <Route path="*" element={<NotFound />} />
-                </Routes>
+                {/* pb-16 on mobile prevents content hiding behind the fixed BottomNav */}
+                <div className="pb-16 md:pb-0">
+                  <Routes>
+                    <Route path="/" element={<Planner />} />
+                    <Route path="/explore" element={<Explore />} />
+                    <Route path="/login" element={<Login />} />
+                    <Route path="/signup" element={<Signup />} />
+                    <Route path="/profile" element={<ProfilePage />} />
+                    <Route path="/profile-settings" element={<ProtectedRoute><ProfileSettings /></ProtectedRoute>} />
+                    <Route path="/user/:handle" element={<ProfilePage />} />
+                    <Route path="/trip" element={<TripBuilder />} />
+                    <Route path="/trip/:id" element={<TripBuilder />} />
+                    <Route path="/builder" element={<Navigate to="/trip" replace />} />
+                    <Route path="/builder/:id" element={<BuilderIdRedirect />} />
+                    {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+                    <Route path="*" element={<NotFound />} />
+                  </Routes>
+                </div>
+                <BottomNav />
               </BrowserRouter>
             </TooltipProvider>
           </TripProvider>
