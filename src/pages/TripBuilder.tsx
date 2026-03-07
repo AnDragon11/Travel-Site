@@ -12,11 +12,13 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
 import {
   Plane, Hotel, Utensils, Camera, MapPin, Clock, Plus, Trash2, Pencil, Save,
   Ticket, Coffee, ShoppingBag, Bus, Car, Train, Footprints, ImagePlus,
-  Calendar, Users, ArrowLeft, GripVertical, Heart, Tag, Share2, LogOut, Link2,
+  Calendar as CalendarIcon, Users, ArrowLeft, GripVertical, Heart, Tag, Share2, LogOut, Link2,
   ChevronDown, Upload, X as XIcon, ExternalLink, Undo2, Redo2,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -165,7 +167,8 @@ const BuilderSlot = ({
         onDragEnd={onDragEnd}
         onDrop={onDrop}
         className={cn(
-          "relative group flex flex-col rounded-xl border transition-all duration-200 w-[200px] h-[240px] shrink-0 bg-card overflow-hidden hover:shadow-lg hover:-translate-y-1",
+          "relative group flex flex-col rounded-xl border transition-all duration-200 w-[200px] shrink-0 bg-card overflow-hidden hover:shadow-lg hover:-translate-y-1",
+          activity.booking_url ? "min-h-[268px]" : "h-[240px]",
           config.bgColor,
           isDraggable ? "cursor-grab active:cursor-grabbing" : "cursor-pointer",
           isDragging && "opacity-50"
@@ -234,10 +237,10 @@ const BuilderSlot = ({
             target="_blank"
             rel="noopener noreferrer"
             onClick={(e) => e.stopPropagation()}
-            className="flex items-center gap-1 mt-1.5 pt-1.5 border-t border-border/30 text-[10px] text-primary hover:text-primary/80 hover:underline w-fit"
+            className="flex items-center gap-1.5 mt-2 px-3 py-1.5 bg-primary/10 hover:bg-primary/20 active:bg-primary/30 text-primary text-[10px] font-semibold rounded-xl transition-colors w-full justify-center border border-primary/20"
           >
-            <ExternalLink className="w-2.5 h-2.5 shrink-0" />
-            View Link
+            <ExternalLink className="w-3 h-3 shrink-0" />
+            Book / View Link
           </a>
         )}
       </div>
@@ -323,15 +326,16 @@ const ActivityDialog = ({
     if (!url) return;
     setIsFetchingImage(true);
     try {
-      const proxy = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
-      const resp = await fetch(proxy, { signal: AbortSignal.timeout(8000) });
+      // microlink.io: works with bot-protected sites, returns structured OG data
+      const resp = await fetch(`https://api.microlink.io/?url=${encodeURIComponent(url)}`, {
+        signal: AbortSignal.timeout(12000),
+      });
       const data = await resp.json();
-      const html: string = data.contents ?? "";
-      const match =
-        html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i) ??
-        html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i);
-      if (match?.[1]) {
-        updateForm({ image_url: match[1] });
+      const imageUrl: string | undefined =
+        data?.data?.image?.url ??
+        data?.data?.screenshot?.url;
+      if (imageUrl) {
+        updateForm({ image_url: imageUrl });
         toast.success("Image fetched from link!");
       } else {
         toast.error("No preview image found at this URL");
@@ -604,6 +608,7 @@ const TripBuilder = () => {
   const [shareOpen, setShareOpen] = useState(false);
   const [overviewOpen, setOverviewOpen] = useState(false);
   const [thumbnailPickerOpen, setThumbnailPickerOpen] = useState(false);
+  const [openDayPicker, setOpenDayPicker] = useState<string | null>(null); // day ID with open calendar picker
 
   // Auto-save state
   const [autoSaveStatus, setAutoSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
@@ -796,8 +801,9 @@ const TripBuilder = () => {
     }
     prevTripRef.current = trip;
     // Never auto-save a brand-new trip in its default empty state — only save once
-    // the user has actually added something (title, destination, or any named activity)
-    if (!id) {
+    // the user has actually added something (title, destination, or any named activity).
+    // Also guard when `id` is in the URL but the trip was never found/loaded (tripLoadedRef stays false).
+    if (!id || !tripLoadedRef.current) {
       const hasContent =
         trip.title.trim() !== "" && trip.title !== "My Trip" ||
         trip.destination.trim() !== "" ||
@@ -994,6 +1000,12 @@ const TripBuilder = () => {
   };
 
   // ─── Day Date with auto-populate ───────────────────────────────
+  // Format a Date object to YYYY-MM-DD using local timezone (avoids UTC shift off-by-one)
+  const localDateStr = (dt: Date) => {
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
+  };
+
   const handleDayDateChange = (dayId: string, dateStr: string) => {
     if (!dateStr) {
       setTrip(p => ({ ...p, days: p.days.map(d => d.id === dayId ? { ...d, date: dateStr } : d) }));
@@ -1008,7 +1020,7 @@ const TripBuilder = () => {
         const offset = i - changedIdx;
         const dt = new Date(base);
         dt.setDate(base.getDate() + offset);
-        return { ...d, date: dt.toISOString().split("T")[0] };
+        return { ...d, date: localDateStr(dt) };
       }),
     }));
   };
@@ -1186,12 +1198,15 @@ const TripBuilder = () => {
     rowLayouts.forEach((row, idx) => {
       if (row.slotCount === 0) return;
       if (idx === 0) {
-        // Start from Day 1 badge at top center, drop down to first row
+        // Start from Day 1 badge, arc left → down → right (mirrors how day-change transitions work)
         const badgeCx = containerWidth / 2;
         const badgeBottomY = TOP_OFFSET / 2 + 22;
+        const R = ARC_RADIUS;
         parts.push(`M ${badgeCx} ${badgeBottomY}`);
-        parts.push(`L ${badgeCx} ${row.yCenter}`);
-        parts.push(`L ${row.startEdgeX} ${row.yCenter}`);
+        parts.push(`L ${PADDING} ${badgeBottomY}`);
+        parts.push(`A ${R} ${R} 0 0 0 ${PADDING - R} ${badgeBottomY + R}`);
+        parts.push(`L ${PADDING - R} ${row.yCenter - R}`);
+        parts.push(`A ${R} ${R} 0 0 0 ${PADDING} ${row.yCenter}`);
       }
       parts.push(`L ${row.endEdgeX} ${row.yCenter}`);
       const next = rowLayouts[idx + 1];
@@ -1272,14 +1287,22 @@ const TripBuilder = () => {
           {/* Base gradient background */}
           <div className="absolute inset-0 bg-gradient-to-br from-primary to-primary/80" />
 
-          {/* Thumbnail — right 45%, strong left gradient ensures text readability */}
+          {/* Thumbnail — full-width background, scaled 110% to avoid hard edges, diagonal gradient overlay */}
           {trip.thumbnail && (
             <>
               <div
-                className="absolute right-0 top-0 bottom-0 w-[45%]"
-                style={{ backgroundImage: `url(${trip.thumbnail})`, backgroundSize: "cover", backgroundPosition: "center" }}
+                className="absolute inset-0"
+                style={{
+                  backgroundImage: `url(${trip.thumbnail})`,
+                  backgroundSize: "110% auto",
+                  backgroundPosition: "center right",
+                }}
               />
-              <div className="absolute inset-0 bg-gradient-to-r from-primary from-[52%] via-primary/80 via-[65%] to-transparent" />
+              {/* Diagonal gradient: fully opaque primary on text side, fades to semi-transparent right */}
+              <div
+                className="absolute inset-0"
+                style={{ background: "linear-gradient(108deg, hsl(var(--primary)) 38%, hsl(var(--primary)/0.9) 52%, hsl(var(--primary)/0.55) 68%, hsl(var(--primary)/0.15) 85%)" }}
+              />
             </>
           )}
 
@@ -1303,6 +1326,7 @@ const TripBuilder = () => {
               </div>
 
               <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
+                {/* Left: title, meta, action buttons */}
                 <div className="space-y-3 flex-1 max-w-xl">
                   <input
                     value={trip.title}
@@ -1332,69 +1356,69 @@ const TripBuilder = () => {
                       />
                       <span className="text-sm text-primary-foreground/70">travelers</span>
                     </div>
+                  </div>
 
+                  {/* Collaborate / Share buttons — left side */}
+                  <div className="flex items-center gap-3 flex-wrap">
+                    {isOwner && id && (
+                      <div className="flex items-center rounded-md overflow-hidden border border-primary-foreground/20 text-sm shrink-0">
+                        <button
+                          onClick={() => setShareOpen(true)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-primary-foreground/80 hover:text-primary-foreground hover:bg-primary-foreground/10 transition-colors"
+                          title="Invite collaborators"
+                        >
+                          <Users className="w-3.5 h-3.5" /> Collaborate
+                        </button>
+                        <div className="w-px self-stretch bg-primary-foreground/20" />
+                        <button
+                          onClick={handleCopyLink}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-primary-foreground/80 hover:text-primary-foreground hover:bg-primary-foreground/10 transition-colors"
+                          title="Copy share link"
+                        >
+                          <Link2 className="w-3.5 h-3.5" /> Share Link
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Auto-save status */}
+                    {autoSaveStatus === "saving" && (
+                      <span className="flex items-center gap-1 text-xs text-primary-foreground/60 shrink-0">
+                        <span className="w-3 h-3 border border-primary-foreground/40 border-t-transparent rounded-full animate-spin" />
+                        Saving…
+                      </span>
+                    )}
+                    {autoSaveStatus === "saved" && (
+                      <span className="flex items-center gap-1 text-xs text-primary-foreground/60 shrink-0">
+                        <Save className="w-3 h-3" /> Saved
+                      </span>
+                    )}
+                    {autoSaveStatus === "error" && (
+                      <span className="text-xs text-red-300 shrink-0">Save failed</span>
+                    )}
+
+                    {/* Collaborator: leave trip */}
+                    {isOwner === false && id && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="gap-1.5 text-destructive/80 hover:text-destructive hover:bg-destructive/10"
+                        onClick={handleLeaveTrip}
+                      >
+                        <LogOut className="w-4 h-4" /> Leave Trip
+                      </Button>
+                    )}
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3">
-                  {/* All participant avatars (owner + collaborators) */}
+                {/* Right: avatars + total cost */}
+                <div className="flex items-center gap-3 shrink-0">
                   {(ownerProfile || collaborators.length > 0) && (
                     <CollaboratorAvatars collaborators={collaborators} ownerProfile={ownerProfile} />
                   )}
-
-                  <div className="text-right mr-2">
+                  <div className="text-right">
                     <p className="text-primary-foreground/70 text-xs">Total Cost</p>
                     <p className="text-2xl font-bold">€{totalCost.toLocaleString()}</p>
                   </div>
-
-                  {/* Owner: share (split button) */}
-                  {isOwner && id && (
-                    <div className="flex items-center rounded-md overflow-hidden border border-primary-foreground/20 text-sm shrink-0">
-                      <button
-                        onClick={() => setShareOpen(true)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-primary-foreground/80 hover:text-primary-foreground hover:bg-primary-foreground/10 transition-colors"
-                        title="Invite collaborators"
-                      >
-                        <Users className="w-3.5 h-3.5" /> Collaborate
-                      </button>
-                      <div className="w-px self-stretch bg-primary-foreground/20" />
-                      <button
-                        onClick={handleCopyLink}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-primary-foreground/80 hover:text-primary-foreground hover:bg-primary-foreground/10 transition-colors"
-                        title="Copy share link"
-                      >
-                        <Link2 className="w-3.5 h-3.5" /> Share Link
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Auto-save status */}
-                  {autoSaveStatus === "saving" && (
-                    <span className="flex items-center gap-1 text-xs text-primary-foreground/60 shrink-0">
-                      <span className="w-3 h-3 border border-primary-foreground/40 border-t-transparent rounded-full animate-spin" />
-                      Saving…
-                    </span>
-                  )}
-                  {autoSaveStatus === "saved" && (
-                    <span className="flex items-center gap-1 text-xs text-primary-foreground/60 shrink-0">
-                      <Save className="w-3 h-3" /> Saved
-                    </span>
-                  )}
-                  {autoSaveStatus === "error" && (
-                    <span className="text-xs text-red-300 shrink-0">Save failed</span>
-                  )}
-
-                  {/* Collaborator: leave trip */}
-                  {isOwner === false && id && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="gap-1.5 text-destructive/80 hover:text-destructive hover:bg-destructive/10"
-                      onClick={handleLeaveTrip}
-                    >
-                      <LogOut className="w-4 h-4" /> Leave Trip
-                    </Button>
-                  )}
                 </div>
               </div>
             </div>
@@ -1506,13 +1530,31 @@ const TripBuilder = () => {
                   return (
                     <div key={idx} className="absolute flex items-center gap-2.5 bg-background px-4 py-2 rounded-full shadow-lg border border-border z-20" style={{ left: pos.x, top: pos.y, transform: "translate(-50%, -50%)" }}>
                       <div className="w-10 h-10 rounded-full bg-primary text-primary-foreground font-bold text-base flex items-center justify-center shrink-0">{dayIndex + 1}</div>
-                      <input
-                        type="date"
-                        value={pos.day.date}
-                        onChange={(e) => handleDayDateChange(pos.day.id, e.target.value)}
-                        className="text-base font-semibold text-foreground bg-transparent border-none outline-none w-36"
-                        onClick={(e) => e.stopPropagation()}
-                      />
+                      <Popover open={openDayPicker === pos.day.id} onOpenChange={(v) => setOpenDayPicker(v ? pos.day.id : null)}>
+                        <PopoverTrigger asChild>
+                          <button
+                            onClick={(e) => e.stopPropagation()}
+                            className="flex items-center gap-1.5 text-base font-semibold text-foreground hover:text-primary transition-colors whitespace-nowrap"
+                          >
+                            <CalendarIcon className="w-4 h-4 text-muted-foreground shrink-0" />
+                            {pos.day.date
+                              ? new Date(pos.day.date + "T00:00:00").toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" })
+                              : "Set date"}
+                          </button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="center" onClick={(e) => e.stopPropagation()}>
+                          <Calendar
+                            mode="single"
+                            selected={pos.day.date ? new Date(pos.day.date + "T00:00:00") : undefined}
+                            onSelect={(date) => {
+                              if (!date) return;
+                              handleDayDateChange(pos.day.id, localDateStr(date));
+                              setOpenDayPicker(null);
+                            }}
+                            initialFocus
+                          />
+                        </PopoverContent>
+                      </Popover>
                       {(!isFirst || trip.days.length > 1) && (
                         <Button variant="ghost" size="icon" className="w-6 h-6 text-destructive hover:bg-destructive/10 shrink-0" onClick={() => removeDay(pos.day.id)}>
                           <Trash2 className="w-3 h-3" />
@@ -1559,13 +1601,16 @@ const TripBuilder = () => {
                       // For "Add Activity" slot
                       const isAddDragOver = isAdd && dragOverItem?.dayId === currentDayId && dragOverItem?.activityIndex === -1;
 
+                      const transportSpacer = showTransport && (
+                        <div className="flex items-center justify-center" style={{ width: GAP + TRANSPORT_WIDTH }}>
+                          {!isAdd && activity && <TransportBubble type={activity.transportType} duration={activity.transportDuration} />}
+                        </div>
+                      );
+
                       return (
                         <div key={isAdd ? `add-${row.dayIndex}` : activity!.id} className="flex items-center">
-                          {showTransport && (
-                            <div className="flex items-center justify-center" style={{ width: GAP + TRANSPORT_WIDTH }}>
-                              {!isAdd && activity && <TransportBubble type={activity.transportType} duration={activity.transportDuration} />}
-                            </div>
-                          )}
+                          {/* LTR: spacer before card; RTL: spacer after (flex-row-reverse would put a before-spacer on the wrong side) */}
+                          {!row.isRTL && transportSpacer}
                           {isAdd ? (
                             <AddSlotCard
                               onClick={() => openAddActivity(trip.days[row.dayIndex].id)}
@@ -1638,6 +1683,7 @@ const TripBuilder = () => {
                               }}
                             />
                           )}
+                          {row.isRTL && transportSpacer}
                         </div>
                       );
                     })}
