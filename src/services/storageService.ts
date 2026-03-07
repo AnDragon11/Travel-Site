@@ -102,9 +102,7 @@ const loadSupabaseTrips = async (userId: string): Promise<SavedTrip[]> => {
 };
 
 const saveSupabaseTrip = async (trip: SavedTrip, userId: string): Promise<void> => {
-  const { error } = await supabase.from("trips").upsert({
-    id: trip.id,
-    user_id: userId,
+  const fields = {
     source: trip.source,
     title: trip.title,
     destination: trip.destination,
@@ -119,10 +117,21 @@ const saveSupabaseTrip = async (trip: SavedTrip, userId: string): Promise<void> 
     photos: trip.photos ?? null,
     tags: trip.tags ?? null,
     ai_metadata: (trip.aiMetadata ?? null) as unknown as Json,
-    // Use the trip's own updatedAt so Realtime comparisons can detect self-saves
     updated_at: trip.updatedAt || new Date().toISOString(),
-  }, { onConflict: "id" });
-  if (error) throw new Error(error.message);
+  };
+
+  // UPDATE first — never touches user_id, so ownership is preserved for collaborator saves.
+  const { data: updated, error: updateError } = await supabase
+    .from("trips")
+    .update(fields)
+    .eq("id", trip.id)
+    .select("id");
+  if (updateError) throw new Error(updateError.message);
+  if (updated && updated.length > 0) return; // existing row updated
+
+  // No row matched → new trip, INSERT with user_id
+  const { error: insertError } = await supabase.from("trips").insert({ id: trip.id, user_id: userId, ...fields });
+  if (insertError) throw new Error(insertError.message);
 };
 
 const deleteSupabaseTrip = async (id: string): Promise<void> => {

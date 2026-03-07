@@ -489,6 +489,7 @@ const TripBuilder = () => {
   const [isOwner, setIsOwner] = useState<boolean | null>(null); // null = role not yet determined
   const [pendingInviteId, setPendingInviteId] = useState<string | null>(null); // current user has pending invite for this trip
   const [ownerProfile, setOwnerProfile] = useState<{ display_name: string | null; handle: string | null; avatar_url: string | null } | null>(null);
+  const realtimeChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
 
   // Auto-save state
@@ -584,25 +585,22 @@ const TripBuilder = () => {
     getCollaborators(id).then(setCollaborators).catch(() => {});
   }, [id, user]);
 
-  // Real-time sync — when a collaborator saves changes, update local state
+  // Real-time sync — broadcast-based collaboration (bypasses RLS subquery issues)
   useEffect(() => {
     if (!id) return;
     const channel = supabase
-      .channel(`trip-collab-${id}`)
-      .on("postgres_changes", {
-        event: "UPDATE",
-        schema: "public",
-        table: "trips",
-        filter: `id=eq.${id}`,
-      }, payload => {
-        const incoming = payload.new as { updated_at: string; days: BuilderDay[] };
+      .channel(`trip:${id}`)
+      // Broadcast: receive trip updates from other collaborators
+      .on("broadcast", { event: "trip_updated" }, ({ payload }) => {
+        const { updatedAt, days } = payload as { updatedAt: string; days: BuilderDay[] };
         setTrip(prev => {
-          if (incoming.updated_at === prev.updatedAt) return prev;
+          if (updatedAt === prev.updatedAt) return prev;
           toast.info("Trip updated by a collaborator");
           skipAutoSaveRef.current++;
-          return { ...prev, days: incoming.days as BuilderDay[], updatedAt: incoming.updated_at };
+          return { ...prev, days, updatedAt };
         });
       })
+      // Still watch collaborator list changes via postgres_changes (simple RLS, works fine)
       .on("postgres_changes", {
         event: "*",
         schema: "public",
@@ -613,7 +611,11 @@ const TripBuilder = () => {
       })
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    realtimeChannelRef.current = channel;
+    return () => {
+      supabase.removeChannel(channel);
+      realtimeChannelRef.current = null;
+    };
   }, [id]);
 
   // Unmount cleanup for auto-save timers
@@ -639,9 +641,15 @@ const TripBuilder = () => {
       try {
         const updated = { ...trip, updatedAt: new Date().toISOString() };
         await saveToStorage(updated);
-        // Sync local updatedAt to what was written to DB so Realtime can detect self-saves
+        // Sync local updatedAt to what was written to DB so broadcast echo is ignored
         skipAutoSaveRef.current++;
         setTrip(prev => ({ ...prev, updatedAt: updated.updatedAt }));
+        // Broadcast change to all collaborators on the same channel
+        realtimeChannelRef.current?.send({
+          type: "broadcast",
+          event: "trip_updated",
+          payload: { updatedAt: updated.updatedAt, days: updated.days },
+        });
         setAutoSaveStatus("saved");
         savedTimerRef.current = setTimeout(() => setAutoSaveStatus("idle"), 2500);
         // For new trips, mark as loaded before navigating so the load effect doesn't re-fetch

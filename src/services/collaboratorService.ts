@@ -181,14 +181,14 @@ export const transferOwnership = async (tripId: string, newOwnerId: string): Pro
   await supabase.from("trip_collaborators").delete().eq("trip_id", tripId).eq("user_id", newOwnerId);
 
   // Add old owner as an accepted collaborator so they retain access
-  await supabase.from("trip_collaborators").insert({
+  await supabase.from("trip_collaborators").upsert({
     trip_id: tripId,
     user_id: session.user.id,
     role: "editor",
     status: "accepted",
     invited_by: newOwnerId,
     accepted_at: new Date().toISOString(),
-  }).onConflict("trip_id,user_id").ignore();
+  }, { onConflict: "trip_id,user_id", ignoreDuplicates: true });
 };
 
 /** Get the profile of the trip's owner */
