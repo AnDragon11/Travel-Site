@@ -1294,8 +1294,9 @@ const TripBuilder = () => {
                 className="absolute inset-0"
                 style={{
                   backgroundImage: `url(${trip.thumbnail})`,
-                  backgroundSize: "110% auto",
+                  backgroundSize: "cover",
                   backgroundPosition: "center right",
+                  transform: "scale(1.1)",
                 }}
               />
               {/* Diagonal gradient: fully opaque primary on text side, fades to semi-transparent right */}
