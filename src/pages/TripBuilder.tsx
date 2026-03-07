@@ -1380,21 +1380,20 @@ const TripBuilder = () => {
                       </div>
                     )}
 
-                    {/* Auto-save status */}
-                    {autoSaveStatus === "saving" && (
-                      <span className="flex items-center gap-1 text-xs text-primary-foreground/60 shrink-0">
-                        <span className="w-3 h-3 border border-primary-foreground/40 border-t-transparent rounded-full animate-spin" />
-                        Saving…
-                      </span>
-                    )}
-                    {autoSaveStatus === "saved" && (
-                      <span className="flex items-center gap-1 text-xs text-primary-foreground/60 shrink-0">
-                        <Save className="w-3 h-3" /> Saved
-                      </span>
-                    )}
-                    {autoSaveStatus === "error" && (
-                      <span className="text-xs text-red-300 shrink-0">Save failed</span>
-                    )}
+                    {/* Auto-save status — always rendered, opacity toggle avoids layout shifts */}
+                    <span className={cn(
+                      "flex items-center gap-1 text-xs shrink-0 transition-opacity duration-300 w-16",
+                      autoSaveStatus === "idle" ? "opacity-0 pointer-events-none" : "opacity-100",
+                      autoSaveStatus === "error" ? "text-red-300" : "text-primary-foreground/60"
+                    )}>
+                      {autoSaveStatus === "saving" && (
+                        <><span className="w-3 h-3 border border-primary-foreground/40 border-t-transparent rounded-full animate-spin shrink-0" />Saving…</>
+                      )}
+                      {autoSaveStatus === "saved" && (
+                        <><Save className="w-3 h-3 shrink-0" />Saved</>
+                      )}
+                      {autoSaveStatus === "error" && "Save failed"}
+                    </span>
 
                     {/* Collaborator: leave trip */}
                     {isOwner === false && id && (
