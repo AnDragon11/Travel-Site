@@ -1035,44 +1035,43 @@ const TripBuilder = () => {
       const next = rowLayouts[idx + 1];
       if (!next || next.slotCount === 0) return;
       const gapY = (row.yCenter + next.yCenter) / 2;
-      const exitX = row.endEdgeX;
-      const enterX = next.startEdgeX;
-      const exitOnRight = !row.isRTL; // LTR exits right, RTL exits left
+      const leftEdge = PADDING;
+      const rightEdge = PADDING + availableWidth;
 
-      if (exitOnRight) {
-        // Exit from right side → arc right-down, go across, enter next row
-        parts.push(`A ${R} ${R} 0 0 1 ${exitX + R} ${row.yCenter + R}`);
-        parts.push(`L ${exitX + R} ${gapY - R}`);
-        parts.push(`A ${R} ${R} 0 0 1 ${exitX} ${gapY}`);
-        parts.push(`L ${enterX} ${gapY}`);
-        if (!next.isRTL) {
-          // → LTR: enter from left side, arc counter-clockwise
-          parts.push(`A ${R} ${R} 0 0 0 ${enterX - R} ${gapY + R}`);
-          parts.push(`L ${enterX - R} ${next.yCenter - R}`);
-          parts.push(`A ${R} ${R} 0 0 0 ${enterX} ${next.yCenter}`);
-        } else {
-          // → RTL: enter from right side, arc clockwise
-          parts.push(`A ${R} ${R} 0 0 1 ${enterX + R} ${gapY + R}`);
-          parts.push(`L ${enterX + R} ${next.yCenter - R}`);
-          parts.push(`A ${R} ${R} 0 0 1 ${enterX} ${next.yCenter}`);
-        }
+      if (!row.isRTL && next.isRTL) {
+        // CASE 1: LTR → RTL (same-day overflow) — U-turn on the RIGHT wall
+        // Line extends to the right wall, arcs down, comes back heading left into RTL row
+        parts.push(`L ${rightEdge} ${row.yCenter}`);
+        parts.push(`A ${R} ${R} 0 0 1 ${rightEdge + R} ${row.yCenter + R}`);
+        parts.push(`L ${rightEdge + R} ${next.yCenter - R}`);
+        parts.push(`A ${R} ${R} 0 0 1 ${rightEdge} ${next.yCenter}`);
+      } else if (!row.isRTL && !next.isRTL) {
+        // CASE 2: LTR → LTR (day change) — right wall U-turn then traverse to left wall
+        parts.push(`L ${rightEdge} ${row.yCenter}`);
+        parts.push(`A ${R} ${R} 0 0 1 ${rightEdge + R} ${row.yCenter + R}`);
+        parts.push(`L ${rightEdge + R} ${gapY - R}`);
+        parts.push(`A ${R} ${R} 0 0 1 ${rightEdge} ${gapY}`);
+        parts.push(`L ${leftEdge} ${gapY}`);
+        parts.push(`A ${R} ${R} 0 0 0 ${leftEdge - R} ${gapY + R}`);
+        parts.push(`L ${leftEdge - R} ${next.yCenter - R}`);
+        parts.push(`A ${R} ${R} 0 0 0 ${leftEdge} ${next.yCenter}`);
+      } else if (row.isRTL && !next.isRTL) {
+        // CASE 3: RTL → LTR (day change) — U-turn on the LEFT wall
+        // Line extends to the left wall, arcs down, comes back heading right into LTR row
+        parts.push(`L ${leftEdge} ${row.yCenter}`);
+        parts.push(`A ${R} ${R} 0 0 0 ${leftEdge - R} ${row.yCenter + R}`);
+        parts.push(`L ${leftEdge - R} ${next.yCenter - R}`);
+        parts.push(`A ${R} ${R} 0 0 0 ${leftEdge} ${next.yCenter}`);
       } else {
-        // Exit from left side (RTL row) → arc left-down, go across, enter next row
-        parts.push(`A ${R} ${R} 0 0 0 ${exitX - R} ${row.yCenter + R}`);
-        parts.push(`L ${exitX - R} ${gapY - R}`);
-        parts.push(`A ${R} ${R} 0 0 0 ${exitX} ${gapY}`);
-        parts.push(`L ${enterX} ${gapY}`);
-        if (!next.isRTL) {
-          // → LTR: enter from left side, arc counter-clockwise
-          parts.push(`A ${R} ${R} 0 0 0 ${enterX - R} ${gapY + R}`);
-          parts.push(`L ${enterX - R} ${next.yCenter - R}`);
-          parts.push(`A ${R} ${R} 0 0 0 ${enterX} ${next.yCenter}`);
-        } else {
-          // → RTL: enter from right side, arc clockwise
-          parts.push(`A ${R} ${R} 0 0 1 ${enterX + R} ${gapY + R}`);
-          parts.push(`L ${enterX + R} ${next.yCenter - R}`);
-          parts.push(`A ${R} ${R} 0 0 1 ${enterX} ${next.yCenter}`);
-        }
+        // CASE 4: RTL → RTL (3rd row of same day) — left wall U-turn then traverse to right wall
+        parts.push(`L ${leftEdge} ${row.yCenter}`);
+        parts.push(`A ${R} ${R} 0 0 0 ${leftEdge - R} ${row.yCenter + R}`);
+        parts.push(`L ${leftEdge - R} ${gapY - R}`);
+        parts.push(`A ${R} ${R} 0 0 0 ${leftEdge} ${gapY}`);
+        parts.push(`L ${rightEdge} ${gapY}`);
+        parts.push(`A ${R} ${R} 0 0 1 ${rightEdge + R} ${gapY + R}`);
+        parts.push(`L ${rightEdge + R} ${next.yCenter - R}`);
+        parts.push(`A ${R} ${R} 0 0 1 ${rightEdge} ${next.yCenter}`);
       }
     });
     return parts.join(" ");
