@@ -698,7 +698,29 @@ const TripBuilder = () => {
     setAutoSaveStatus("saving");
     saveTimerRef.current = setTimeout(async () => {
       try {
-        const updated = { ...trip, updatedAt: new Date().toISOString() };
+        let updated = { ...trip, updatedAt: new Date().toISOString() };
+
+        // Pre-save merge: pull in any days added by collaborators that we don't have locally
+        if (id) {
+          const { data: dbCurrent } = await supabase
+            .from("trips")
+            .select("updated_at, days")
+            .eq("id", updated.id)
+            .maybeSingle();
+          if (dbCurrent?.updated_at && dbCurrent.updated_at > tripUpdatedAtRef.current) {
+            const dbDays = (dbCurrent.days as BuilderDay[]) ?? [];
+            const localDayIds = new Set(updated.days.map((d: BuilderDay) => d.id));
+            const newFromDB = dbDays.filter((d: BuilderDay) => !localDayIds.has(d.id));
+            if (newFromDB.length > 0) {
+              const mergedDays = [...updated.days, ...newFromDB];
+              updated = { ...updated, days: mergedDays };
+              skipAutoSaveRef.current++;
+              tripUpdatedAtRef.current = dbCurrent.updated_at;
+              setTrip(prev => ({ ...prev, days: mergedDays }));
+            }
+          }
+        }
+
         await saveToStorage(updated);
         // Sync local updatedAt to what was written to DB so broadcast/poll echo is ignored
         tripUpdatedAtRef.current = updated.updatedAt;
