@@ -17,6 +17,7 @@ import {
   Plane, Hotel, Utensils, Camera, MapPin, Clock, Plus, Trash2, Pencil, Save,
   Ticket, Coffee, ShoppingBag, Bus, Car, Train, Footprints, ImagePlus,
   Calendar, Users, ArrowLeft, GripVertical, Heart, Tag, Share2, LogOut, Link2,
+  ChevronDown, Upload, X as XIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -196,7 +197,13 @@ const BuilderSlot = ({
 
       {/* Image */}
       <div className="relative w-full h-[110px] shrink-0">
-        <img src={imageUrl} alt={activity.name || "Activity"} className="w-full h-full object-cover" loading="lazy" />
+        <img
+          src={imageUrl}
+          alt={activity.name || "Activity"}
+          className="w-full h-full object-cover"
+          loading="lazy"
+          onError={(e) => { e.currentTarget.src = placeholderImages[activity.type] || placeholderImages.activity; }}
+        />
         <div className={cn("absolute top-2 left-2 flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold backdrop-blur-sm bg-background/70 shadow-sm", config.color)}>
           <Icon className="w-3 h-3" />
           <span className="capitalize">{activity.type}</span>
@@ -518,6 +525,8 @@ const TripBuilder = () => {
   const realtimeChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const tripUpdatedAtRef = useRef<string>("");
   const [shareOpen, setShareOpen] = useState(false);
+  const [overviewOpen, setOverviewOpen] = useState(false);
+  const [thumbnailPickerOpen, setThumbnailPickerOpen] = useState(false);
 
   // Auto-save state
   const [autoSaveStatus, setAutoSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
@@ -945,11 +954,28 @@ const TripBuilder = () => {
 
   const totalCost = trip.days.reduce((t, d) => t + d.activities.reduce((s, a) => s + (a.cost || 0), 0), 0);
 
+  // Key activities for the overview panel (flights + hotel check-in/out only)
+  const keyActivities = useMemo(() =>
+    trip.days.flatMap((day, di) =>
+      day.activities
+        .filter(a => a.type === "flight" || a.type === "accommodation")
+        .map(a => ({ ...a, dayLabel: day.date || `Day ${di + 1}` }))
+    ),
+  [trip.days]);
+
+  // All activity image URLs available for thumbnail selection
+  const activityImages = useMemo(() =>
+    [...new Set(
+      trip.days.flatMap(d => d.activities.map(a => a.image_url)).filter(Boolean)
+    )],
+  [trip.days]);
+
   // Build all rows across all days (+ add slot per day)
   interface RowData {
     dayIndex: number;
     slots: (BuilderActivity | "add")[];
     isFirstRowOfDay: boolean;
+    rowIndexInDay: number;
     day: BuilderDay;
   }
 
@@ -962,7 +988,7 @@ const TripBuilder = () => {
         dayRows.push(allSlots.slice(i, i + slotsPerRow));
       }
       dayRows.forEach((rowSlots, ri) => {
-        rows.push({ dayIndex, slots: rowSlots, isFirstRowOfDay: ri === 0, day });
+        rows.push({ dayIndex, slots: rowSlots, isFirstRowOfDay: ri === 0, rowIndexInDay: ri, day });
       });
     });
     return rows;
@@ -973,14 +999,17 @@ const TripBuilder = () => {
 
   const rowLayouts = useMemo(() => {
     return allRows.map((row, rowIndex) => {
+      const isRTL = row.rowIndexInDay % 2 === 1; // odd rows within a day serpentine right-to-left
       const slotCount = row.slots.length;
       const rowWidth = getRowWidth(slotCount);
-      const rowLeft = PADDING;
+      // RTL rows are right-aligned so the last activity aligns with the right edge
+      const rowLeft = isRTL ? PADDING + availableWidth - rowWidth : PADDING;
       const yCenter = rowIndex * ROW_HEIGHT + ROW_HEIGHT / 2;
       const top = rowIndex * ROW_HEIGHT + (ROW_HEIGHT - SLOT_HEIGHT) / 2;
-      const startEdgeX = rowLeft;
-      const endEdgeX = rowLeft + rowWidth;
-      return { ...row, rowIndex, slotCount, rowWidth, rowLeft, yCenter, top, startEdgeX, endEdgeX };
+      // Path enters from the direction the snake is coming from
+      const startEdgeX = isRTL ? PADDING + availableWidth : PADDING;
+      const endEdgeX = isRTL ? PADDING + availableWidth - rowWidth : PADDING + rowWidth;
+      return { ...row, rowIndex, slotCount, rowWidth, rowLeft, yCenter, top, startEdgeX, endEdgeX, isRTL };
     });
   }, [allRows, containerWidth]);
 
@@ -988,6 +1017,7 @@ const TripBuilder = () => {
 
   const snakePath = useMemo(() => {
     if (rowLayouts.length === 0) return "";
+    const R = ARC_RADIUS;
     const parts: string[] = [];
     rowLayouts.forEach((row, idx) => {
       if (row.slotCount === 0) return;
@@ -996,13 +1026,45 @@ const TripBuilder = () => {
       const next = rowLayouts[idx + 1];
       if (!next || next.slotCount === 0) return;
       const gapY = (row.yCenter + next.yCenter) / 2;
-      parts.push(`A ${ARC_RADIUS} ${ARC_RADIUS} 0 0 1 ${row.endEdgeX + ARC_RADIUS} ${row.yCenter + ARC_RADIUS}`);
-      parts.push(`L ${row.endEdgeX + ARC_RADIUS} ${gapY - ARC_RADIUS}`);
-      parts.push(`A ${ARC_RADIUS} ${ARC_RADIUS} 0 0 1 ${row.endEdgeX} ${gapY}`);
-      parts.push(`L ${next.startEdgeX} ${gapY}`);
-      parts.push(`A ${ARC_RADIUS} ${ARC_RADIUS} 0 0 0 ${next.startEdgeX - ARC_RADIUS} ${gapY + ARC_RADIUS}`);
-      parts.push(`L ${next.startEdgeX - ARC_RADIUS} ${next.yCenter - ARC_RADIUS}`);
-      parts.push(`A ${ARC_RADIUS} ${ARC_RADIUS} 0 0 0 ${next.startEdgeX} ${next.yCenter}`);
+      const exitX = row.endEdgeX;
+      const enterX = next.startEdgeX;
+      const exitOnRight = !row.isRTL; // LTR exits right, RTL exits left
+
+      if (exitOnRight) {
+        // Exit from right side → arc right-down, go across, enter next row
+        parts.push(`A ${R} ${R} 0 0 1 ${exitX + R} ${row.yCenter + R}`);
+        parts.push(`L ${exitX + R} ${gapY - R}`);
+        parts.push(`A ${R} ${R} 0 0 1 ${exitX} ${gapY}`);
+        parts.push(`L ${enterX} ${gapY}`);
+        if (!next.isRTL) {
+          // → LTR: enter from left side, arc counter-clockwise
+          parts.push(`A ${R} ${R} 0 0 0 ${enterX - R} ${gapY + R}`);
+          parts.push(`L ${enterX - R} ${next.yCenter - R}`);
+          parts.push(`A ${R} ${R} 0 0 0 ${enterX} ${next.yCenter}`);
+        } else {
+          // → RTL: enter from right side, arc clockwise
+          parts.push(`A ${R} ${R} 0 0 1 ${enterX + R} ${gapY + R}`);
+          parts.push(`L ${enterX + R} ${next.yCenter - R}`);
+          parts.push(`A ${R} ${R} 0 0 1 ${enterX} ${next.yCenter}`);
+        }
+      } else {
+        // Exit from left side (RTL row) → arc left-down, go across, enter next row
+        parts.push(`A ${R} ${R} 0 0 0 ${exitX - R} ${row.yCenter + R}`);
+        parts.push(`L ${exitX - R} ${gapY - R}`);
+        parts.push(`A ${R} ${R} 0 0 0 ${exitX} ${gapY}`);
+        parts.push(`L ${enterX} ${gapY}`);
+        if (!next.isRTL) {
+          // → LTR: enter from left side, arc counter-clockwise
+          parts.push(`A ${R} ${R} 0 0 0 ${enterX - R} ${gapY + R}`);
+          parts.push(`L ${enterX - R} ${next.yCenter - R}`);
+          parts.push(`A ${R} ${R} 0 0 0 ${enterX} ${next.yCenter}`);
+        } else {
+          // → RTL: enter from right side, arc clockwise
+          parts.push(`A ${R} ${R} 0 0 1 ${enterX + R} ${gapY + R}`);
+          parts.push(`L ${enterX + R} ${next.yCenter - R}`);
+          parts.push(`A ${R} ${R} 0 0 1 ${enterX} ${next.yCenter}`);
+        }
+      }
     });
     return parts.join(" ");
   }, [rowLayouts]);
@@ -1032,15 +1094,42 @@ const TripBuilder = () => {
       )}
       <main className="flex-1 pt-16">
         {/* Hero Header */}
-        <section className="bg-gradient-to-br from-primary via-primary/90 to-primary/80 text-primary-foreground py-8 md:py-12">
-          <div className="container mx-auto px-4">
+        <section className="relative text-primary-foreground py-8 md:py-12 overflow-hidden">
+          {/* Base gradient background */}
+          <div className="absolute inset-0 bg-gradient-to-br from-primary to-primary/80" />
+
+          {/* Thumbnail — right half, fades into the gradient */}
+          {trip.thumbnail && (
+            <>
+              <div
+                className="absolute right-0 top-0 bottom-0 w-3/5 md:w-1/2"
+                style={{ backgroundImage: `url(${trip.thumbnail})`, backgroundSize: "cover", backgroundPosition: "center" }}
+              />
+              <div className="absolute inset-0 bg-gradient-to-r from-primary via-primary/85 to-primary/20" />
+            </>
+          )}
+
+          {/* Content */}
+          <div className="relative z-10 container mx-auto px-4">
             <div className="max-w-6xl mx-auto">
-              <Button variant="ghost" size="sm" className="text-primary-foreground/70 hover:text-primary-foreground hover:bg-primary-foreground/10 mb-4 -ml-2" onClick={() => navigate(fromExplore ? "/explore" : "/profile")}>
-                <ArrowLeft className="w-4 h-4 mr-1" /> {fromExplore ? "Explore" : "My Trips"}
-              </Button>
+              <div className="flex items-center justify-between mb-4">
+                <Button variant="ghost" size="sm" className="text-primary-foreground/70 hover:text-primary-foreground hover:bg-primary-foreground/10 -ml-2" onClick={() => navigate(fromExplore ? "/explore" : "/profile")}>
+                  <ArrowLeft className="w-4 h-4 mr-1" /> {fromExplore ? "Explore" : "My Trips"}
+                </Button>
+
+                {/* Change thumbnail button */}
+                <button
+                  onClick={() => setThumbnailPickerOpen(true)}
+                  className="flex items-center gap-1.5 text-xs text-primary-foreground/60 hover:text-primary-foreground bg-primary-foreground/10 hover:bg-primary-foreground/20 rounded-lg px-2.5 py-1.5 transition-colors"
+                  title="Change cover photo"
+                >
+                  <ImagePlus className="w-3.5 h-3.5" />
+                  {trip.thumbnail ? "Change Cover" : "Set Cover"}
+                </button>
+              </div>
 
               <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
-                <div className="space-y-3 flex-1">
+                <div className="space-y-3 flex-1 max-w-xl">
                   <input
                     value={trip.title}
                     onChange={(e) => setTrip((p) => ({ ...p, title: e.target.value }))}
@@ -1076,20 +1165,39 @@ const TripBuilder = () => {
                       onClick={() => setTrip((p) => ({ ...p, isFavorite: !p.isFavorite }))}
                       className="flex items-center gap-1.5 bg-primary-foreground/10 hover:bg-primary-foreground/20 rounded-lg px-3 py-1.5 transition-colors"
                     >
-                      <Heart
-                        className={cn(
-                          "w-4 h-4",
-                          trip.isFavorite
-                            ? "fill-red-400 text-red-400"
-                            : "text-primary-foreground/70"
-                        )}
-                      />
-                      <span className="text-sm text-primary-foreground/70">
-                        {trip.isFavorite ? 'Favorited' : 'Favorite'}
-                      </span>
+                      <Heart className={cn("w-4 h-4", trip.isFavorite ? "fill-red-400 text-red-400" : "text-primary-foreground/70")} />
+                      <span className="text-sm text-primary-foreground/70">{trip.isFavorite ? "Favorited" : "Favorite"}</span>
                     </button>
                   </div>
 
+                  {/* Overview toggle */}
+                  {keyActivities.length > 0 && (
+                    <button
+                      onClick={() => setOverviewOpen(v => !v)}
+                      className="flex items-center gap-1.5 text-xs text-primary-foreground/70 hover:text-primary-foreground transition-colors"
+                    >
+                      <ChevronDown className={cn("w-3.5 h-3.5 transition-transform", overviewOpen && "rotate-180")} />
+                      {overviewOpen ? "Hide overview" : "Show overview"}
+                    </button>
+                  )}
+
+                  {/* Overview panel */}
+                  {overviewOpen && keyActivities.length > 0 && (
+                    <div className="bg-primary-foreground/10 backdrop-blur-sm rounded-xl p-3 space-y-1.5 mt-1">
+                      {keyActivities.map((a) => (
+                        <div key={a.id} className="flex items-center gap-2.5 text-sm">
+                          {a.type === "flight"
+                            ? <Plane className="w-3.5 h-3.5 text-sky-300 shrink-0" />
+                            : <Hotel className="w-3.5 h-3.5 text-blue-300 shrink-0" />
+                          }
+                          <span className="text-primary-foreground/60 text-xs shrink-0 w-14">{a.dayLabel}</span>
+                          <span className="text-primary-foreground/60 text-xs shrink-0 w-10">{a.time}</span>
+                          <span className="text-primary-foreground font-medium truncate">{a.name}</span>
+                          {a.location && <span className="text-primary-foreground/50 text-xs truncate hidden sm:block">{a.location}</span>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex items-center gap-3">
@@ -1180,13 +1288,10 @@ const TripBuilder = () => {
         <section className="py-6 pb-12">
           <div className="container mx-auto px-4">
             <div className="max-w-6xl mx-auto" ref={containerRef}>
-              <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center mb-6">
                 <h2 className="text-xl font-bold text-foreground flex items-center gap-2">
                   <Clock className="w-5 h-5 text-primary" /> Your Journey
                 </h2>
-                <Button variant="outline" size="sm" onClick={addDay}>
-                  <Plus className="w-4 h-4 mr-1" /> Add Day
-                </Button>
               </div>
 
               {/* First day header */}
@@ -1251,7 +1356,7 @@ const TripBuilder = () => {
 
                 {/* Activity rows */}
                 {rowLayouts.map((row) => (
-                  <div key={`row-${row.rowIndex}`} className="absolute flex items-center" style={{ top: row.top, left: row.rowLeft, width: row.rowWidth }}>
+                  <div key={`row-${row.rowIndex}`} className={cn("absolute flex items-center", row.isRTL && "flex-row-reverse")} style={{ top: row.top, left: row.rowLeft, width: row.rowWidth }}>
                     {row.slots.map((slot, slotIndex) => {
                       const isAdd = slot === "add";
                       const showTransport = slotIndex > 0 && !isAdd;
@@ -1371,8 +1476,15 @@ const TripBuilder = () => {
                 ))}
               </div>
 
+              {/* Add Day — bottom of timeline */}
+              <div className="flex justify-center mt-8">
+                <Button variant="outline" onClick={addDay} className="gap-2 px-6">
+                  <Plus className="w-4 h-4" /> Add Day
+                </Button>
+              </div>
+
               {/* Legend */}
-              <div className="mt-8 flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
+              <div className="mt-6 flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
                 <div className="flex items-center gap-2">
                   <Pencil className="w-3 h-3" />
                   <span>Click activity to edit</span>
@@ -1391,6 +1503,92 @@ const TripBuilder = () => {
         </section>
       </main>
       <Footer />
+
+      {/* Thumbnail Picker Modal */}
+      {thumbnailPickerOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={() => setThumbnailPickerOpen(false)}>
+          <div className="bg-background rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+              <h3 className="font-semibold text-foreground flex items-center gap-2">
+                <ImagePlus className="w-4 h-4 text-primary" /> Choose Cover Photo
+              </h3>
+              <button onClick={() => setThumbnailPickerOpen(false)} className="text-muted-foreground hover:text-foreground">
+                <XIcon className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              {/* Upload custom */}
+              <div>
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Upload Custom</p>
+                <label className="flex items-center gap-2 cursor-pointer w-fit bg-muted hover:bg-accent rounded-lg px-4 py-2.5 text-sm text-foreground transition-colors border border-dashed border-border">
+                  <Upload className="w-4 h-4 text-muted-foreground" />
+                  Choose image…
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      const reader = new FileReader();
+                      reader.onload = (ev) => {
+                        const dataUrl = ev.target?.result as string;
+                        setTrip(p => ({ ...p, thumbnail: dataUrl }));
+                        setThumbnailPickerOpen(false);
+                      };
+                      reader.readAsDataURL(file);
+                    }}
+                  />
+                </label>
+              </div>
+
+              {/* Activity images */}
+              {activityImages.length > 0 && (
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">From Your Trip</p>
+                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                    {activityImages.map((url) => (
+                      <button
+                        key={url}
+                        onClick={() => { setTrip(p => ({ ...p, thumbnail: url })); setThumbnailPickerOpen(false); }}
+                        className={cn(
+                          "relative aspect-video rounded-lg overflow-hidden border-2 transition-all hover:scale-[1.02]",
+                          trip.thumbnail === url ? "border-primary shadow-md" : "border-transparent hover:border-primary/50"
+                        )}
+                      >
+                        <img src={url} alt="" className="w-full h-full object-cover" />
+                        {trip.thumbnail === url && (
+                          <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
+                            <div className="w-5 h-5 rounded-full bg-primary flex items-center justify-center">
+                              <svg className="w-3 h-3 text-primary-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                            </div>
+                          </div>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {activityImages.length === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  Add activities with images first, or upload a custom photo above.
+                </p>
+              )}
+
+              {/* Remove thumbnail */}
+              {trip.thumbnail && (
+                <button
+                  onClick={() => { setTrip(p => ({ ...p, thumbnail: undefined })); setThumbnailPickerOpen(false); }}
+                  className="text-xs text-muted-foreground hover:text-destructive transition-colors"
+                >
+                  Remove cover photo
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Activity Dialog */}
       <ActivityDialog

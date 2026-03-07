@@ -573,23 +573,20 @@ function parseAIJSON(raw: string): Record<string, unknown> {
   return JSON.parse(raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, ""));
 }
 
-// Generate a keyword-based Unsplash URL per activity — never 404s, always contextual
-function activityImageUrl(name: string, type: string, location: string, destination: string): string {
-  const typeKeywords: Record<string, string> = {
-    flight:        "airplane airport departure aviation",
-    transport:     "city transport train bus travel",
-    accommodation: "hotel room interior design",
-    dining:        "restaurant food table gourmet",
-    sightseeing:   "landmark architecture historic",
-    activity:      "outdoor adventure experience",
-    shopping:      "market shopping street boutique",
-    cafe:          "cafe coffee morning pastry",
-  };
-  const base = typeKeywords[type] ?? "travel";
-  // Combine destination + venue name slug + type keywords for uniqueness
-  const venueSlug = (location || name).replace(/[^a-zA-Z0-9 ]/g, "").split(" ").slice(0, 3).join(" ");
-  const terms = [destination, venueSlug, base].filter(Boolean).join(",");
-  return `https://source.unsplash.com/800x600/?${encodeURIComponent(terms)}`;
+// Stable per-type fallback images (direct Unsplash CDN photo IDs — no source.unsplash.com API)
+const FALLBACK_IMAGES: Record<string, string> = {
+  flight:        "https://images.unsplash.com/photo-1529074963764-98f45c47344b?w=800&h=600&fit=crop&auto=format",
+  transport:     "https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=800&h=600&fit=crop&auto=format",
+  accommodation: "https://images.unsplash.com/photo-1566073771259-6a8506099945?w=800&h=600&fit=crop&auto=format",
+  dining:        "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=800&h=600&fit=crop&auto=format",
+  cafe:          "https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=800&h=600&fit=crop&auto=format",
+  sightseeing:   "https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?w=800&h=600&fit=crop&auto=format",
+  activity:      "https://images.unsplash.com/photo-1530789253388-582c481c54b0?w=800&h=600&fit=crop&auto=format",
+  shopping:      "https://images.unsplash.com/photo-1483985988355-763728e1935b?w=800&h=600&fit=crop&auto=format",
+};
+
+function activityImageUrl(type: string): string {
+  return FALLBACK_IMAGES[type] ?? FALLBACK_IMAGES.sightseeing;
 }
 
 // ─── Main ──────────────────────────────────────────────────────────────────────
@@ -682,12 +679,7 @@ serve(async (req) => {
         if (Array.isArray(day.activities)) {
           for (const act of day.activities) {
             if (!act.image_url || !act.image_url.startsWith("http")) {
-              act.image_url = activityImageUrl(
-                act.name ?? "",
-                act.type ?? "",
-                act.location ?? "",
-                form.destination_city,
-              );
+              act.image_url = activityImageUrl(act.type ?? "");
             }
           }
         }
@@ -699,8 +691,23 @@ serve(async (req) => {
     itinerary.comfort_level_name = COMFORT_NAMES[form.comfort_level - 1] ?? "Standard";
     itinerary.comfort_level_emoji = COMFORT_EMOJIS[form.comfort_level - 1] ?? "⭐";
 
+    // Pick the best activity image as thumbnail — prefer sightseeing/activity (the reason people travel)
+    // then dining/cafe/shopping, skip flights and transport as they're generic
+    if (!itinerary.thumbnail_url && Array.isArray(dailyItinerary)) {
+      const preferredTypes = ["sightseeing", "activity", "shopping", "cafe", "dining", "accommodation"];
+      outer: for (const type of preferredTypes) {
+        for (const day of dailyItinerary) {
+          for (const act of (day.activities ?? [])) {
+            if (act.type === type && act.image_url?.startsWith("http")) {
+              itinerary.thumbnail_url = act.image_url;
+              break outer;
+            }
+          }
+        }
+      }
+    }
     if (!itinerary.thumbnail_url) {
-      itinerary.thumbnail_url = `https://source.unsplash.com/featured/1600x900/?${encodeURIComponent(form.destination_city + " travel")}`;
+      itinerary.thumbnail_url = FALLBACK_IMAGES.sightseeing;
     }
 
     // ── Write result ─────────────────────────────────────────────────────────
