@@ -20,7 +20,7 @@ import {
   Ticket, Coffee, ShoppingBag, Bus, Car, Train, Footprints, ImagePlus, Bike, Wine, Star,
   Calendar as CalendarIcon, Users, ArrowLeft, GripVertical, Heart, Tag, Share2, LogOut, Link2,
   ChevronDown, Upload, X as XIcon, ExternalLink, Undo2, Redo2, Download, MessageSquare,
-  AlertCircle, FileUp, FileDown, Printer, Copy2, Filter,
+  AlertCircle, FileUp, FileDown, Printer, CopyPlus, Filter,
 } from "lucide-react";
 import { usePreferences } from "@/context/PreferencesContext";
 import { toast } from "sonner";
@@ -335,7 +335,7 @@ const BuilderSlot = ({
               className="w-7 h-7 rounded-full bg-background/80 backdrop-blur-sm flex items-center justify-center shadow-sm hover:bg-background"
               title="Duplicate"
             >
-              <Copy2 className="w-3.5 h-3.5 text-foreground" />
+              <CopyPlus className="w-3.5 h-3.5 text-foreground" />
             </button>
           )}
           <button
@@ -1912,7 +1912,7 @@ const TripBuilder = () => {
                           }
                         }}
                       >
-                        <Copy2 className="w-3.5 h-3.5" /> Use this itinerary
+                        <CopyPlus className="w-3.5 h-3.5" /> Use this itinerary
                       </Button>
                     )}
 
