@@ -26,7 +26,6 @@ export const convertItineraryToTrip = (
   const days: BuilderDay[] = itinerary.daily_itinerary.map((day) => ({
     id: generateId(),
     date: day.date,
-    theme: day.theme,
     activities: day.activities.map((activity) =>
       convertActivity(activity)
     ),

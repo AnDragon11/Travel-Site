@@ -21,6 +21,7 @@ import {
   Calendar as CalendarIcon, Users, ArrowLeft, GripVertical, Heart, Tag, Share2, LogOut, Link2,
   ChevronDown, Upload, X as XIcon, ExternalLink, Undo2, Redo2, Download, MessageSquare,
   AlertCircle, FileUp, FileDown, Printer, CopyPlus, Filter,
+  ThumbsUp, ThumbsDown, DollarSign, ChevronRight, Receipt,
 } from "lucide-react";
 import { usePreferences } from "@/context/PreferencesContext";
 import { toast } from "sonner";
@@ -176,7 +177,6 @@ export interface BuilderActivity {
   image_url: string;
   booking_url?: string;
   photos?: string[];
-  review?: string;
   // Transport / Flight fields
   origin?: string;
   destination_airport?: string;
@@ -202,7 +202,6 @@ export interface BuilderActivity {
 export interface BuilderDay {
   id: string;
   date: string;
-  theme: string;
   activities: BuilderActivity[];
 }
 
@@ -226,6 +225,11 @@ import {
 } from "@/services/collaboratorService";
 import ShareTripModal from "@/components/ShareTripModal";
 import CollaboratorAvatars from "@/components/CollaboratorAvatars";
+import {
+  VoteSummary, TripExpense,
+  getVotesForTrip, upsertVote, removeVote,
+  getExpensesForTrip, addExpense, deleteExpense, calcBalances,
+} from "@/services/groupTripService";
 
 const generateId = () => Math.random().toString(36).substring(2, 10);
 
@@ -243,10 +247,9 @@ const createEmptyActivity = (type = "experience", subtype?: string): BuilderActi
   booking_url: "",
 });
 
-const createEmptyDay = (dayNum: number): BuilderDay => ({
+const createEmptyDay = (): BuilderDay => ({
   id: generateId(),
   date: "",
-  theme: `Day ${dayNum}`,
   activities: [],
 });
 
@@ -388,12 +391,16 @@ const BuilderSlot = ({
           <h4 className="text-sm font-semibold text-foreground line-clamp-2 leading-tight">
             {activity.name || "Untitled"}
           </h4>
-          {/* Flight pair: origin → destination */}
-          {(activity.type === "transport" || activity.type === "flight") && activity.origin && activity.destination_airport && (
+          {/* Flight pair: origin → destination (shows origin alone if destination not yet set) */}
+          {(activity.type === "transport" || activity.type === "flight") && activity.origin && (
             <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
               <span className="truncate max-w-[60px]">{activity.origin}</span>
-              <Plane className="w-2.5 h-2.5 shrink-0" />
-              <span className="truncate max-w-[60px]">{activity.destination_airport}</span>
+              {activity.destination_airport && (
+                <>
+                  <Plane className="w-2.5 h-2.5 shrink-0" />
+                  <span className="truncate max-w-[60px]">{activity.destination_airport}</span>
+                </>
+              )}
             </div>
           )}
           <div className="flex items-center gap-1 text-xs text-muted-foreground mt-auto">
@@ -945,7 +952,7 @@ const TripBuilder = () => {
     title: "My Trip",
     destination: "",
     travelers: 1,
-    days: [createEmptyDay(1)],
+    days: [createEmptyDay()],
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   });
@@ -1026,6 +1033,13 @@ const TripBuilder = () => {
     });
     getCollaborators(id).then(setCollaborators).catch(() => {});
   }, [id, user]);
+
+  // Load group tools data when panel is opened
+  useEffect(() => {
+    if (!id || !groupPanelOpen || !user) return;
+    getVotesForTrip(id).then(setVotes).catch(() => {});
+    getExpensesForTrip(id).then(setExpenses).catch(() => {});
+  }, [id, groupPanelOpen, user]);
 
   // Real-time sync — two separate channels to prevent broadcast/postgres_changes conflicts
   useEffect(() => {
@@ -1193,6 +1207,18 @@ const TripBuilder = () => {
   // Activity type filter
   const [filterTypes, setFilterTypes] = useState<string[]>([]);
 
+  // Costs by day toggle
+  const [showDayCosts, setShowDayCosts] = useState(false);
+
+  // Group tools (votes + expenses) — only for collaborated trips
+  const [groupPanelOpen, setGroupPanelOpen] = useState(false);
+  const [groupTab, setGroupTab] = useState<"votes" | "expenses">("votes");
+  const [votes, setVotes] = useState<VoteSummary[]>([]);
+  const [expenses, setExpenses] = useState<TripExpense[]>([]);
+  const [expenseDesc, setExpenseDesc] = useState("");
+  const [expenseAmount, setExpenseAmount] = useState("");
+  const [addingExpense, setAddingExpense] = useState(false);
+
   // Track width
   useEffect(() => {
     const updateWidth = () => {
@@ -1205,7 +1231,7 @@ const TripBuilder = () => {
 
   // ─── CRUD ──────────────────────────────────────────────────────
   const addDay = () => {
-    setTrip((p) => ({ ...p, days: [...p.days, createEmptyDay(p.days.length + 1)] }));
+    setTrip((p) => ({ ...p, days: [...p.days, createEmptyDay()] }));
   };
 
   const removeDay = (dayId: string) => {
@@ -1635,6 +1661,58 @@ const TripBuilder = () => {
   const slotsPerRow = Math.max(1, Math.floor((availableWidth + GAP) / SLOT_WITH_GAP));
 
   const totalCost = trip.days.reduce((t, d) => t + d.activities.reduce((s, a) => s + (a.cost || 0), 0), 0);
+
+  // Group tools helpers
+  const handleVote = async (activityId: string, v: 1 | -1) => {
+    if (!id || !user) return;
+    const existing = votes.find(x => x.activity_id === activityId);
+    try {
+      if (existing?.myVote === v) {
+        await removeVote(id, activityId);
+        setVotes(prev => prev.map(x => x.activity_id === activityId
+          ? { ...x, myVote: 0, up: x.up - (v === 1 ? 1 : 0), down: x.down - (v === -1 ? 1 : 0) }
+          : x));
+      } else {
+        await upsertVote(id, activityId, v);
+        setVotes(prev => {
+          const found = prev.find(x => x.activity_id === activityId);
+          if (found) {
+            return prev.map(x => x.activity_id === activityId ? {
+              ...x, myVote: v,
+              up: v === 1 ? x.up + 1 : (x.myVote === 1 ? x.up - 1 : x.up),
+              down: v === -1 ? x.down + 1 : (x.myVote === -1 ? x.down - 1 : x.down),
+            } : x);
+          }
+          return [...prev, { activity_id: activityId, up: v === 1 ? 1 : 0, down: v === -1 ? 1 : 0, myVote: v }];
+        });
+      }
+    } catch { toast.error("Failed to save vote"); }
+  };
+
+  const handleAddExpense = async () => {
+    if (!id || !expenseDesc.trim() || !expenseAmount) return;
+    setAddingExpense(true);
+    try {
+      const exp = await addExpense(id, expenseDesc.trim(), Number(expenseAmount));
+      setExpenses(prev => [...prev, exp]);
+      setExpenseDesc("");
+      setExpenseAmount("");
+    } catch { toast.error("Failed to add expense"); }
+    finally { setAddingExpense(false); }
+  };
+
+  const handleDeleteExpense = async (expId: string) => {
+    try {
+      await deleteExpense(expId);
+      setExpenses(prev => prev.filter(e => e.id !== expId));
+    } catch { toast.error("Failed to delete expense"); }
+  };
+
+  // Collaborator member IDs (owner + accepted collabs)
+  const memberIds = [
+    ...(trip.days.length > 0 && user ? [user.id] : []),
+    ...collaborators.filter(c => c.status === "accepted").map(c => c.user_id ?? c.id),
+  ];
 
   // Key activities for the overview panel (flights + hotel check-in/out only)
   const keyActivities = useMemo(() =>
@@ -2075,6 +2153,20 @@ const TripBuilder = () => {
                     title="Print / Save as PDF" onClick={handlePrint}>
                     <Printer className="w-4 h-4" />
                   </Button>
+
+                  {/* Divider */}
+                  <div className="w-px h-5 bg-border mx-1" />
+
+                  {/* Costs by day toggle */}
+                  <Button
+                    variant={showDayCosts ? "default" : "ghost"}
+                    size="icon"
+                    className="w-8 h-8"
+                    title={showDayCosts ? "Hide day costs" : "Show cost per day"}
+                    onClick={() => setShowDayCosts(v => !v)}
+                  >
+                    <span className="text-xs font-bold">{currencySymbol}</span>
+                  </Button>
                 </div>
               </div>
 
@@ -2127,7 +2219,19 @@ const TripBuilder = () => {
                 {dayBadgePositions.map((pos, idx) => {
                   const dayIndex = trip.days.findIndex((d) => d.id === pos.day.id);
                   const isFirst = dayIndex === 0;
+                  const dayCost = showDayCosts ? pos.day.activities.reduce((s, a) => s + (a.cost || 0), 0) : 0;
                   return (
+                    <>
+                    {showDayCosts && dayCost > 0 && (
+                      <div
+                        key={`cost-${idx}`}
+                        className="absolute text-[10px] font-semibold text-primary bg-primary/10 border border-primary/20 px-2 py-0.5 rounded-full z-20 whitespace-nowrap"
+                        style={{ left: pos.x, top: pos.y + 24, transform: "translate(-50%, 0)" }}
+                      >
+                        {currencySymbol}{dayCost.toLocaleString()}
+                      </div>
+                    )}
+
                     <div key={idx} className="absolute flex items-center gap-2 bg-background pl-0.5 pr-3 h-10 rounded-full shadow-lg border border-border z-20" style={{ left: pos.x, top: pos.y, transform: "translate(-50%, -50%)" }}>
                       <div className="w-9 h-9 rounded-full bg-primary text-primary-foreground font-bold text-sm flex items-center justify-center shrink-0">{dayIndex + 1}</div>
                       <Popover open={openDayPicker === pos.day.id} onOpenChange={(v) => setOpenDayPicker(v ? pos.day.id : null)}>
@@ -2161,6 +2265,7 @@ const TripBuilder = () => {
                         </Button>
                       )}
                     </div>
+                    </>
                   );
                 })}
 
@@ -2247,6 +2352,14 @@ const TripBuilder = () => {
                               }}
                             />
                           ) : (
+                            <div className="relative">
+                            {/* Vote badge — shown when group panel is open and activity has votes */}
+                            {groupPanelOpen && !isAdd && (votes.find(x => x.activity_id === activity!.id)?.up ?? 0) + (votes.find(x => x.activity_id === activity!.id)?.down ?? 0) > 0 && (
+                              <div className="absolute bottom-1 left-1 z-20 flex items-center gap-1 bg-background/90 backdrop-blur-sm rounded-full px-1.5 py-0.5 border border-border text-[10px] font-semibold pointer-events-none">
+                                {(votes.find(x => x.activity_id === activity!.id)?.up ?? 0) > 0 && <span className="text-emerald-600 flex items-center gap-0.5"><ThumbsUp className="w-2.5 h-2.5" />{votes.find(x => x.activity_id === activity!.id)?.up}</span>}
+                                {(votes.find(x => x.activity_id === activity!.id)?.down ?? 0) > 0 && <span className="text-red-500 flex items-center gap-0.5"><ThumbsDown className="w-2.5 h-2.5" />{votes.find(x => x.activity_id === activity!.id)?.down}</span>}
+                              </div>
+                            )}
                             <BuilderSlot
                               activity={activity!}
                               onEdit={() => openEditActivity(trip.days[row.dayIndex].id, globalActIndex, activity!)}
@@ -2299,6 +2412,7 @@ const TripBuilder = () => {
                                 e.stopPropagation();
                               }}
                             />
+                            </div>
                           )}
                           {row.isRTL && gap}
                         </div>
@@ -2314,6 +2428,163 @@ const TripBuilder = () => {
                   <Plus className="w-4 h-4" /> Add Day
                 </Button>
               </div>
+
+              {/* ── Group Tools — only shown for collaborated trips ── */}
+              {id && user && collaborators.filter(c => c.status === "accepted").length > 0 && (
+                <div className="mt-8 print:hidden border border-border rounded-xl overflow-hidden">
+                  <button
+                    onClick={() => setGroupPanelOpen(v => !v)}
+                    className="w-full flex items-center justify-between px-5 py-3.5 bg-card hover:bg-muted/50 transition-colors text-sm font-semibold text-foreground"
+                  >
+                    <span className="flex items-center gap-2">
+                      <Users className="w-4 h-4 text-primary" />
+                      Group Tools
+                      <span className="text-xs font-normal text-muted-foreground">· votes &amp; expenses</span>
+                    </span>
+                    <ChevronRight className={cn("w-4 h-4 text-muted-foreground transition-transform", groupPanelOpen && "rotate-90")} />
+                  </button>
+
+                  {groupPanelOpen && (
+                    <div className="border-t border-border bg-card">
+                      {/* Tab bar */}
+                      <div className="flex border-b border-border">
+                        {(["votes", "expenses"] as const).map(tab => (
+                          <button
+                            key={tab}
+                            onClick={() => setGroupTab(tab)}
+                            className={cn(
+                              "flex items-center gap-1.5 px-5 py-2.5 text-sm font-medium border-b-2 transition-colors capitalize",
+                              groupTab === tab ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"
+                            )}
+                          >
+                            {tab === "votes" ? <ThumbsUp className="w-3.5 h-3.5" /> : <Receipt className="w-3.5 h-3.5" />}
+                            {tab}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* ── Votes tab ── */}
+                      {groupTab === "votes" && (
+                        <div className="p-4 space-y-2">
+                          <p className="text-xs text-muted-foreground mb-3">Vote on activities to help the group decide what to keep.</p>
+                          {trip.days.flatMap(d => d.activities).length === 0 ? (
+                            <p className="text-sm text-muted-foreground text-center py-4">No activities yet.</p>
+                          ) : (
+                            trip.days.flatMap((d, di) => d.activities.map((a, ai) => {
+                              const v = votes.find(x => x.activity_id === a.id);
+                              return (
+                                <div key={a.id} className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-muted/40 hover:bg-muted/70 transition-colors">
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <span className="text-xs text-muted-foreground shrink-0">D{di + 1}</span>
+                                    <span className="text-sm font-medium truncate">{a.name || "Untitled"}</span>
+                                    {a.location && <span className="text-xs text-muted-foreground truncate hidden sm:block">· {a.location}</span>}
+                                  </div>
+                                  <div className="flex items-center gap-1.5 shrink-0">
+                                    <button
+                                      onClick={() => handleVote(a.id, 1)}
+                                      className={cn("flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition-all border", v?.myVote === 1 ? "bg-emerald-100 dark:bg-emerald-900 border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300" : "border-border bg-background text-muted-foreground hover:text-emerald-600")}
+                                    >
+                                      <ThumbsUp className="w-3 h-3" />{v?.up ?? 0}
+                                    </button>
+                                    <button
+                                      onClick={() => handleVote(a.id, -1)}
+                                      className={cn("flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition-all border", v?.myVote === -1 ? "bg-red-100 dark:bg-red-900 border-red-300 dark:border-red-700 text-red-700 dark:text-red-300" : "border-border bg-background text-muted-foreground hover:text-red-500")}
+                                    >
+                                      <ThumbsDown className="w-3 h-3" />{v?.down ?? 0}
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            }))
+                          )}
+                        </div>
+                      )}
+
+                      {/* ── Expenses tab ── */}
+                      {groupTab === "expenses" && (
+                        <div className="p-4 space-y-4">
+                          {/* Add expense form */}
+                          <div className="flex gap-2 items-end">
+                            <div className="flex-1 space-y-1">
+                              <label className="text-xs text-muted-foreground">Description</label>
+                              <input
+                                value={expenseDesc}
+                                onChange={e => setExpenseDesc(e.target.value)}
+                                placeholder="e.g. Dinner at La Piazza"
+                                className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                              />
+                            </div>
+                            <div className="w-28 space-y-1">
+                              <label className="text-xs text-muted-foreground">Amount ({currencySymbol})</label>
+                              <input
+                                type="number"
+                                min={0}
+                                value={expenseAmount}
+                                onChange={e => setExpenseAmount(e.target.value)}
+                                placeholder="0"
+                                className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                              />
+                            </div>
+                            <Button size="sm" disabled={addingExpense || !expenseDesc.trim() || !expenseAmount} onClick={handleAddExpense} className="shrink-0">
+                              {addingExpense ? <span className="w-3.5 h-3.5 border border-current border-t-transparent rounded-full animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+                            </Button>
+                          </div>
+
+                          {/* Expense list */}
+                          {expenses.length === 0 ? (
+                            <p className="text-sm text-muted-foreground text-center py-4">No expenses logged yet.</p>
+                          ) : (
+                            <div className="space-y-1.5">
+                              {expenses.map(exp => (
+                                <div key={exp.id} className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-muted/40 text-sm">
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <DollarSign className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                                    <span className="truncate font-medium">{exp.description}</span>
+                                    <span className="text-muted-foreground text-xs shrink-0">
+                                      by {exp.paid_by_profile?.display_name ?? exp.paid_by_profile?.handle ?? "someone"}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-2 shrink-0">
+                                    <span className="font-bold text-foreground">{currencySymbol}{Number(exp.amount).toLocaleString()}</span>
+                                    {exp.paid_by === user.id && (
+                                      <button onClick={() => handleDeleteExpense(exp.id)} className="text-muted-foreground hover:text-destructive transition-colors">
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Balances */}
+                          {expenses.length > 0 && memberIds.length > 1 && (() => {
+                            const nets = calcBalances(expenses, memberIds);
+                            const memberProfiles: Record<string, string> = {};
+                            collaborators.forEach(c => { memberProfiles[c.user_id ?? c.id] = c.profile.display_name ?? c.profile.handle ?? "Collaborator"; });
+                            if (user) memberProfiles[user.id] = user.user_metadata?.display_name ?? "You";
+                            return (
+                              <div className="border-t border-border pt-3 space-y-1">
+                                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Balances</p>
+                                {Object.entries(nets).map(([uid, net]) => (
+                                  Math.abs(net) < 0.01 ? null : (
+                                    <div key={uid} className="flex items-center justify-between text-sm">
+                                      <span className="text-foreground">{uid === user?.id ? "You" : (memberProfiles[uid] ?? "Member")}</span>
+                                      <span className={cn("font-semibold", net > 0 ? "text-emerald-600" : "text-red-500")}>
+                                        {net > 0 ? "+" : ""}{currencySymbol}{Math.abs(net).toFixed(2)}
+                                      </span>
+                                    </div>
+                                  )
+                                ))}
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* ── Print-only itinerary view ── */}
               <div className="hidden print:block space-y-8">

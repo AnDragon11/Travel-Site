@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { Collaborator } from "@/services/collaboratorService";
 
 type SimpleProfile = { display_name: string | null; handle: string | null; avatar_url: string | null };
@@ -12,7 +13,7 @@ interface CollaboratorAvatarsProps {
 const Avatar = ({ profile, title, size }: { profile: SimpleProfile; title: string; size: "sm" | "md" }) => {
   const dim = size === "sm" ? "w-6 h-6 text-xs" : "w-8 h-8 text-sm";
   const initials = (profile.display_name || profile.handle || "?").slice(0, 2).toUpperCase();
-  return (
+  const inner = (
     <div
       className={`${dim} rounded-full border-2 border-primary-foreground/30 overflow-hidden flex items-center justify-center bg-primary/60 text-primary-foreground font-bold shrink-0`}
       title={title}
@@ -22,6 +23,15 @@ const Avatar = ({ profile, title, size }: { profile: SimpleProfile; title: strin
         : initials}
     </div>
   );
+
+  if (profile.handle) {
+    return (
+      <Link to={`/profile/@${profile.handle}`} onClick={(e) => e.stopPropagation()}>
+        {inner}
+      </Link>
+    );
+  }
+  return inner;
 };
 
 const CollaboratorAvatars = ({ collaborators, ownerProfile, max = 5, size = "md" }: CollaboratorAvatarsProps) => {
