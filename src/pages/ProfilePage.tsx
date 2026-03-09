@@ -51,7 +51,7 @@ const TripCard = ({
   const firstAct = trip.days?.[0]?.activities?.[0] as unknown as (Record<string, string>) | undefined;
   const coverPhoto = trip.thumbnail ?? trip.photos?.[0] ?? firstAct?.image_url ?? firstAct?.image;
   const startDate = trip.days?.[0]?.date
-    ? new Date(trip.days[0].date).toLocaleDateString(undefined, { month: "short", year: "numeric" })
+    ? new Date(trip.days[0].date + "T00:00:00").toLocaleDateString(undefined, { month: "short", year: "numeric" })
     : null;
 
   return (

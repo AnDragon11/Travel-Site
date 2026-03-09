@@ -174,3 +174,10 @@
     );
   }
 }
+
+/* ── Print / PDF styles ── */
+@media print {
+  header, footer, nav, .bottom-nav { display: none !important; }
+  body { background: white !important; color: black !important; }
+  main { padding-top: 0 !important; }
+}

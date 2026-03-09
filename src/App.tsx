@@ -3,7 +3,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useParams } from "react-router-dom";
 import { TripProvider } from "@/context/TripContext";
 import { AuthProvider } from "@/context/AuthContext";
 import { PreferencesProvider } from "@/context/PreferencesContext";
@@ -11,7 +11,6 @@ import { ThemeProvider } from "next-themes";
 import Planner from "./pages/Planner";
 import ProfileSettings from "./pages/ProfileSettings";
 import ProfilePage from "./pages/ProfilePage";
-import { Navigate, useParams } from "react-router-dom";
 
 const BuilderIdRedirect = () => { const { id } = useParams(); return <Navigate to={`/trip/${id}`} replace />; };
 import TripBuilder from "./pages/TripBuilder";

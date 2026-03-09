@@ -17,46 +17,139 @@ import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
 import {
   Plane, Hotel, Utensils, Camera, MapPin, Clock, Plus, Trash2, Pencil, Save,
-  Ticket, Coffee, ShoppingBag, Bus, Car, Train, Footprints, ImagePlus,
+  Ticket, Coffee, ShoppingBag, Bus, Car, Train, Footprints, ImagePlus, Bike, Wine, Star,
   Calendar as CalendarIcon, Users, ArrowLeft, GripVertical, Heart, Tag, Share2, LogOut, Link2,
-  ChevronDown, Upload, X as XIcon, ExternalLink, Undo2, Redo2,
+  ChevronDown, Upload, X as XIcon, ExternalLink, Undo2, Redo2, Download, MessageSquare,
+  AlertCircle, FileUp, FileDown, Printer,
 } from "lucide-react";
 import { toast } from "sonner";
 
-// ─── Configs (matching Itinerary page) ─────────────────────────────
+// ─── Configs ─────────────────────────────────────────────────────────
+// Primary (new) types shown in type selector
 const activityTypeConfig: Record<string, { icon: React.ElementType; color: string; bgColor: string; label: string }> = {
-  flight: { icon: Plane, color: "text-sky-500", bgColor: "bg-sky-50 dark:bg-sky-950 border-sky-200 dark:border-sky-800", label: "Flight / Airport" },
-  accommodation: { icon: Hotel, color: "text-blue-500", bgColor: "bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800", label: "Hotel / Stay" },
-  dining: { icon: Utensils, color: "text-orange-500", bgColor: "bg-orange-50 dark:bg-orange-950 border-orange-200 dark:border-orange-800", label: "Dining" },
-  cafe: { icon: Coffee, color: "text-amber-500", bgColor: "bg-amber-50 dark:bg-amber-950 border-amber-200 dark:border-amber-800", label: "Café" },
-  sightseeing: { icon: Camera, color: "text-emerald-500", bgColor: "bg-emerald-50 dark:bg-emerald-950 border-emerald-200 dark:border-emerald-800", label: "Sightseeing" },
-  activity: { icon: Ticket, color: "text-purple-500", bgColor: "bg-purple-50 dark:bg-purple-950 border-purple-200 dark:border-purple-800", label: "Activity" },
-  transport: { icon: Bus, color: "text-cyan-500", bgColor: "bg-cyan-50 dark:bg-cyan-950 border-cyan-200 dark:border-cyan-800", label: "Transport" },
-  shopping: { icon: ShoppingBag, color: "text-pink-500", bgColor: "bg-pink-50 dark:bg-pink-950 border-pink-200 dark:border-pink-800", label: "Shopping" },
+  transport:     { icon: Bus,         color: "text-cyan-500",    bgColor: "bg-cyan-50 dark:bg-cyan-950 border-cyan-200 dark:border-cyan-800",         label: "Transport"      },
+  accommodation: { icon: Hotel,       color: "text-blue-500",    bgColor: "bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800",         label: "Hotel / Stay"   },
+  food:          { icon: Utensils,    color: "text-orange-500",  bgColor: "bg-orange-50 dark:bg-orange-950 border-orange-200 dark:border-orange-800", label: "Food & Drinks"  },
+  experience:    { icon: Camera,      color: "text-emerald-500", bgColor: "bg-emerald-50 dark:bg-emerald-950 border-emerald-200 dark:border-emerald-800", label: "Experience"  },
+  // Legacy types (kept for backward compat — old trips still render correctly)
+  flight:        { icon: Plane,       color: "text-sky-500",     bgColor: "bg-sky-50 dark:bg-sky-950 border-sky-200 dark:border-sky-800",             label: "Flight"         },
+  dining:        { icon: Utensils,    color: "text-orange-500",  bgColor: "bg-orange-50 dark:bg-orange-950 border-orange-200 dark:border-orange-800", label: "Dining"         },
+  cafe:          { icon: Coffee,      color: "text-amber-500",   bgColor: "bg-amber-50 dark:bg-amber-950 border-amber-200 dark:border-amber-800",     label: "Café"           },
+  sightseeing:   { icon: Camera,      color: "text-emerald-500", bgColor: "bg-emerald-50 dark:bg-emerald-950 border-emerald-200 dark:border-emerald-800", label: "Sightseeing"},
+  activity:      { icon: Ticket,      color: "text-purple-500",  bgColor: "bg-purple-50 dark:bg-purple-950 border-purple-200 dark:border-purple-800", label: "Activity"       },
+  shopping:      { icon: ShoppingBag, color: "text-pink-500",    bgColor: "bg-pink-50 dark:bg-pink-950 border-pink-200 dark:border-pink-800",         label: "Shopping"       },
 };
 
+// Primary types shown in the dialog type selector (new consolidated set)
+const primaryTypes = ["transport", "accommodation", "food", "experience"] as const;
+
+// Subtypes per primary type
+const transportSubtypes = [
+  { value: "flight",   icon: Plane,     label: "Flight"        },
+  { value: "train",    icon: Train,     label: "Train / Metro" },
+  { value: "bus",      icon: Bus,       label: "Bus / Tram"    },
+  { value: "car",      icon: Car,       label: "Drive / Taxi"  },
+  { value: "cycling",  icon: Bike,      label: "Cycling"       },
+  { value: "walking",  icon: Footprints,label: "Walking"       },
+];
+
+const foodSubtypes = [
+  { value: "restaurant", icon: Utensils, label: "Restaurant" },
+  { value: "bar",        icon: Wine,     label: "Bar"        },
+  { value: "cafe",       icon: Coffee,   label: "Café"       },
+];
+
+const experienceSubtypes = [
+  { value: "sightseeing", icon: Camera,      label: "Sightseeing" },
+  { value: "shopping",    icon: ShoppingBag, label: "Shopping"    },
+  { value: "activity",    icon: Ticket,      label: "Activity"    },
+];
+
+// Helper: get effective icon/color for an activity (handles subtypes + legacy)
+const getActivityConfig = (activity: { type: string; subtype?: string }) => {
+  // Transport subtypes
+  if (activity.type === "transport" && activity.subtype) {
+    const sub = transportSubtypes.find(s => s.value === activity.subtype);
+    if (sub) return { ...activityTypeConfig.transport, icon: sub.icon, label: sub.label };
+  }
+  // Food subtypes
+  if (activity.type === "food" && activity.subtype) {
+    const sub = foodSubtypes.find(s => s.value === activity.subtype);
+    if (sub) return { ...activityTypeConfig.food, icon: sub.icon, label: sub.label };
+    if (activity.subtype === "cafe") return { ...activityTypeConfig.food, icon: Coffee, label: "Café", bgColor: "bg-amber-50 dark:bg-amber-950 border-amber-200 dark:border-amber-800", color: "text-amber-500" };
+  }
+  // Experience subtypes
+  if (activity.type === "experience" && activity.subtype) {
+    const sub = experienceSubtypes.find(s => s.value === activity.subtype);
+    if (sub) {
+      const colors: Record<string, { color: string; bgColor: string }> = {
+        sightseeing: { color: "text-emerald-500", bgColor: "bg-emerald-50 dark:bg-emerald-950 border-emerald-200 dark:border-emerald-800" },
+        shopping:    { color: "text-pink-500",    bgColor: "bg-pink-50 dark:bg-pink-950 border-pink-200 dark:border-pink-800" },
+        activity:    { color: "text-purple-500",  bgColor: "bg-purple-50 dark:bg-purple-950 border-purple-200 dark:border-purple-800" },
+      };
+      return { ...activityTypeConfig.experience, icon: sub.icon, label: sub.label, ...(colors[sub.value] ?? {}) };
+    }
+  }
+  return activityTypeConfig[activity.type] ?? activityTypeConfig.experience;
+};
+
+// Default name per type/subtype
+const defaultActivityName = (type: string, subtype?: string): string => {
+  if (type === "transport") {
+    return transportSubtypes.find(s => s.value === subtype)?.label ?? "Transport";
+  }
+  if (type === "food") {
+    return foodSubtypes.find(s => s.value === subtype)?.label ?? "Food & Drinks";
+  }
+  if (type === "experience") {
+    return experienceSubtypes.find(s => s.value === subtype)?.label ?? "Experience";
+  }
+  return activityTypeConfig[type]?.label ?? "Activity";
+};
+
+// Legacy transport type bubbles (for transportType field on non-transport activities)
 const transportTypes = [
-  { value: "walk", icon: Footprints, label: "Walk" },
-  { value: "car", icon: Car, label: "Drive" },
-  { value: "bus", icon: Bus, label: "Bus" },
-  { value: "train", icon: Train, label: "Train" },
+  { value: "walk",  icon: Footprints, label: "Walk"  },
+  { value: "car",   icon: Car,        label: "Drive" },
+  { value: "bus",   icon: Bus,        label: "Bus"   },
+  { value: "train", icon: Train,      label: "Train" },
 ];
 
 const placeholderImages: Record<string, string> = {
-  flight: "https://images.unsplash.com/photo-1529074963764-98f45c47344b?w=400&h=200&fit=crop",
-  accommodation: "https://images.unsplash.com/photo-1566073771259-6a8506099945?w=400&h=200&fit=crop",
-  dining: "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=400&h=200&fit=crop",
-  cafe: "https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=400&h=200&fit=crop",
-  sightseeing: "https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?w=400&h=200&fit=crop",
-  activity: "https://images.unsplash.com/photo-1530789253388-582c481c54b0?w=400&h=200&fit=crop",
-  shopping: "https://images.unsplash.com/photo-1483985988355-763728e1935b?w=400&h=200&fit=crop",
-  transport: "https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=400&h=200&fit=crop",
+  // ── Transport subtypes ──
+  flight:           "https://images.unsplash.com/photo-1529074963764-98f45c47344b?w=400&h=200&fit=crop",
+  train:            "https://images.unsplash.com/photo-1474487548417-781cb71495f3?w=400&h=200&fit=crop",
+  bus:              "https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=400&h=200&fit=crop",
+  car:              "https://images.unsplash.com/photo-1449965408869-eaa3f722e40d?w=400&h=200&fit=crop",
+  cycling:          "https://images.unsplash.com/photo-1534787238916-9ba6764efd4f?w=400&h=200&fit=crop",
+  walking:          "https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?w=400&h=200&fit=crop",
+  // ── Food subtypes ──
+  restaurant:       "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=400&h=200&fit=crop",
+  bar:              "https://images.unsplash.com/photo-1575444758702-4a6b9222336e?w=400&h=200&fit=crop",
+  cafe:             "https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=400&h=200&fit=crop",
+  // ── Experience subtypes ──
+  sightseeing:      "https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?w=400&h=200&fit=crop",
+  shopping:         "https://images.unsplash.com/photo-1483985988355-763728e1935b?w=400&h=200&fit=crop",
+  activity:         "https://images.unsplash.com/photo-1530789253388-582c481c54b0?w=400&h=200&fit=crop",
+  // ── Primary types (fallback when subtype has no match) ──
+  transport:        "https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=400&h=200&fit=crop",
+  accommodation:    "https://images.unsplash.com/photo-1566073771259-6a8506099945?w=400&h=200&fit=crop",
+  food:             "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=400&h=200&fit=crop",
+  experience:       "https://images.unsplash.com/photo-1530789253388-582c481c54b0?w=400&h=200&fit=crop",
+  // ── Legacy keys ──
+  dining:           "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=400&h=200&fit=crop",
 };
+
+const getPlaceholderImage = (activity: { type: string; subtype?: string }): string =>
+  placeholderImages[activity.subtype ?? ""] ||
+  placeholderImages[activity.type] ||
+  placeholderImages.activity;
 
 // ─── Types ──────────────────────────────────────────────────────────
 export interface BuilderActivity {
   id: string;
-  type: string;
+  type: string;             // "transport" | "accommodation" | "food" | "experience" | (legacy: "flight" | "dining" | etc.)
+  subtype?: string;         // e.g. "flight" | "train" | "restaurant" | "sightseeing"
   name: string;
   time: string;
   duration: string;
@@ -64,11 +157,29 @@ export interface BuilderActivity {
   cost: number;
   notes: string;
   image_url: string;
-  booking_url?: string;     // Link to booking page
-  photos?: string[];        // Additional photos for trip diary
-  review?: string;          // User review of this activity
-  transportType: string;
+  booking_url?: string;
+  photos?: string[];
+  review?: string;
+  transportType: string;    // legacy inter-activity transport bubble type
   transportDuration: string;
+  // Transport / Flight fields
+  origin?: string;
+  destination_airport?: string;
+  airline?: string;
+  flight_number?: string;
+  luggage_checkin?: number;
+  luggage_cabin?: number;
+  flight_class?: string;    // "economy" | "premium_economy" | "business" | "first"
+  // Accommodation fields
+  nights?: number;
+  cost_per_night?: number;
+  stars?: number;           // 1–5
+  amenities?: string[];
+  bed_types?: string;
+  checkin_time?: string;
+  checkout_time?: string;
+  hotel_bond_id?: string;   // shared ID between check-in and checkout activities
+  is_checkout?: boolean;
 }
 
 export interface BuilderDay {
@@ -94,16 +205,17 @@ import { SavedTrip } from "@/lib/tripTypes";
 import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  Collaborator, getCollaborators, getTripRole, leaveTrip, getTripOwnerProfile, transferOwnership,
+  Collaborator, getCollaborators, getTripRole, leaveTrip, getTripOwnerProfile, transferOwnership, declineInvite,
 } from "@/services/collaboratorService";
 import ShareTripModal from "@/components/ShareTripModal";
 import CollaboratorAvatars from "@/components/CollaboratorAvatars";
 
 const generateId = () => Math.random().toString(36).substring(2, 10);
 
-const createEmptyActivity = (): BuilderActivity => ({
+const createEmptyActivity = (type = "experience", subtype?: string): BuilderActivity => ({
   id: generateId(),
-  type: "activity",
+  type,
+  subtype,
   name: "",
   time: "09:00",
   duration: "1h",
@@ -123,7 +235,7 @@ const createEmptyDay = (dayNum: number): BuilderDay => ({
   activities: [],
 });
 
-// ─── Activity Slot (display only, matching Itinerary style) ────────
+// ─── Activity Slot ─────────────────────────────────────────────────
 const BuilderSlot = ({
   activity,
   onEdit,
@@ -149,13 +261,13 @@ const BuilderSlot = ({
   isDragOver?: boolean;
   dropPosition?: 'before' | 'after';
 }) => {
-  const config = activityTypeConfig[activity.type] || activityTypeConfig.activity;
+  const config = getActivityConfig(activity);
   const Icon = config.icon;
-  const imageUrl = activity.image_url || placeholderImages[activity.type] || placeholderImages.activity;
+  const imageUrl = activity.image_url || getPlaceholderImage(activity);
+  const isHotelCheckout = activity.type === "accommodation" && activity.is_checkout;
 
   return (
-    <div className="relative">
-      {/* Drop indicator - before */}
+    <div className="relative" style={{ width: 200 }}>
       {isDragOver && dropPosition === 'before' && (
         <div className="absolute -left-2 top-0 bottom-0 w-1 bg-primary rounded-full z-30" />
       )}
@@ -168,85 +280,122 @@ const BuilderSlot = ({
         onDrop={onDrop}
         className={cn(
           "relative group flex flex-col rounded-xl border transition-all duration-200 w-[200px] shrink-0 bg-card overflow-hidden hover:shadow-lg hover:-translate-y-1",
-          activity.booking_url ? "min-h-[268px]" : "h-[240px]",
           config.bgColor,
           isDraggable ? "cursor-grab active:cursor-grabbing" : "cursor-pointer",
-          isDragging && "opacity-50"
+          isDragging && "opacity-50",
+          // Hotel checkout: show colored left strip (bond indicator)
+          isHotelCheckout && "border-l-4 border-l-blue-400"
         )}
+        style={{ minHeight: 240 }}
         onClick={onEdit}
       >
-      {/* Drag handle - show when draggable */}
-      {isDraggable && (
-        <div className="absolute top-2 left-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-          <div className="w-7 h-7 rounded-full bg-background/80 backdrop-blur-sm flex items-center justify-center shadow-sm cursor-grab active:cursor-grabbing">
-            <GripVertical className="w-3.5 h-3.5 text-muted-foreground" />
+        {/* Drag handle */}
+        {isDraggable && (
+          <div className="absolute top-2 left-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+            <div className="w-7 h-7 rounded-full bg-background/80 backdrop-blur-sm flex items-center justify-center shadow-sm">
+              <GripVertical className="w-3.5 h-3.5 text-muted-foreground" />
+            </div>
+          </div>
+        )}
+
+        {/* Edit / Delete buttons */}
+        <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+          <button
+            onClick={(e) => { e.stopPropagation(); onEdit(); }}
+            className="w-7 h-7 rounded-full bg-background/80 backdrop-blur-sm flex items-center justify-center shadow-sm hover:bg-background"
+          >
+            <Pencil className="w-3.5 h-3.5 text-foreground" />
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); onDelete(); }}
+            className="w-7 h-7 rounded-full bg-destructive/80 backdrop-blur-sm flex items-center justify-center shadow-sm hover:bg-destructive"
+          >
+            <Trash2 className="w-3.5 h-3.5 text-destructive-foreground" />
+          </button>
+        </div>
+
+        {/* Image */}
+        <div className="relative w-full h-[100px] shrink-0">
+          <img
+            src={imageUrl}
+            alt={activity.name || "Activity"}
+            className="w-full h-full object-cover"
+            loading="lazy"
+            onError={(e) => { e.currentTarget.src = getPlaceholderImage(activity); }}
+          />
+          {/* Type badge */}
+          <div className={cn("absolute top-2 left-2 flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold backdrop-blur-sm bg-background/75 shadow-sm", config.color)}>
+            <Icon className="w-2.5 h-2.5" />
+            <span>{config.label}</span>
+          </div>
+          {/* Stars (hotels) */}
+          {(activity.type === "accommodation" || activity.type === "flight") && activity.stars && activity.stars > 0 && (
+            <div className="absolute bottom-2 left-2 flex items-center gap-0.5">
+              {Array.from({ length: Math.min(5, activity.stars) }).map((_, i) => (
+                <Star key={i} className="w-2.5 h-2.5 fill-amber-400 text-amber-400" />
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Time bar */}
+        <div className={cn("flex items-center gap-1.5 px-3 py-1.5 border-b border-border/30", config.bgColor)}>
+          <Clock className={cn("w-3 h-3 shrink-0", config.color)} />
+          <span className={cn("text-sm font-bold", config.color)}>{activity.time}</span>
+          {activity.duration && (
+            <span className="text-xs text-muted-foreground ml-auto">{activity.duration}</span>
+          )}
+          {activity.notes?.trim() && (
+            <MessageSquare className="w-3 h-3 text-muted-foreground shrink-0" title="Has notes" />
+          )}
+        </div>
+
+        {/* Text content */}
+        <div className="flex flex-col flex-1 p-3 gap-1">
+          <h4 className="text-sm font-semibold text-foreground line-clamp-2 leading-tight">
+            {activity.name || "Untitled"}
+          </h4>
+          {/* Flight pair: origin → destination */}
+          {(activity.type === "transport" || activity.type === "flight") && activity.origin && activity.destination_airport && (
+            <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+              <span className="truncate max-w-[60px]">{activity.origin}</span>
+              <Plane className="w-2.5 h-2.5 shrink-0" />
+              <span className="truncate max-w-[60px]">{activity.destination_airport}</span>
+            </div>
+          )}
+          <div className="flex items-center gap-1 text-xs text-muted-foreground mt-auto">
+            <MapPin className="w-3 h-3 shrink-0" />
+            <span className="truncate">{activity.location || "No location"}</span>
+          </div>
+          {/* Divider + cost */}
+          <div className="flex items-center justify-between mt-1 pt-1.5 border-t border-border/30">
+            {activity.type === "accommodation" && activity.nights ? (
+              <span className="text-[10px] text-muted-foreground">{activity.nights} night{activity.nights !== 1 ? "s" : ""}</span>
+            ) : (
+              <span className="text-[10px] text-muted-foreground" />
+            )}
+            {activity.cost > 0 && <span className="text-xs font-bold text-foreground">€{activity.cost.toLocaleString()}</span>}
           </div>
         </div>
-      )}
 
-      {/* Edit / Delete overlay */}
-      <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-        <button
-          onClick={(e) => { e.stopPropagation(); onEdit(); }}
-          className="w-7 h-7 rounded-full bg-background/80 backdrop-blur-sm flex items-center justify-center shadow-sm hover:bg-background"
-        >
-          <Pencil className="w-3.5 h-3.5 text-foreground" />
-        </button>
-        <button
-          onClick={(e) => { e.stopPropagation(); onDelete(); }}
-          className="w-7 h-7 rounded-full bg-destructive/80 backdrop-blur-sm flex items-center justify-center shadow-sm hover:bg-destructive"
-        >
-          <Trash2 className="w-3.5 h-3.5 text-destructive-foreground" />
-        </button>
-      </div>
-
-      {/* Image */}
-      <div className="relative w-full h-[110px] shrink-0">
-        <img
-          src={imageUrl}
-          alt={activity.name || "Activity"}
-          className="w-full h-full object-cover"
-          loading="lazy"
-          onError={(e) => { e.currentTarget.src = placeholderImages[activity.type] || placeholderImages.activity; }}
-        />
-        <div className={cn("absolute top-2 left-2 flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold backdrop-blur-sm bg-background/70 shadow-sm", config.color)}>
-          <Icon className="w-3 h-3" />
-          <span className="capitalize">{activity.type}</span>
-        </div>
-        <div className="absolute bottom-2 right-2 px-1.5 py-0.5 rounded-md text-[10px] font-bold backdrop-blur-sm bg-background/70 text-foreground shadow-sm">
-          {activity.time}
-        </div>
-      </div>
-
-      {/* Text */}
-      <div className="flex flex-col flex-1 p-3">
-        <h4 className="text-sm font-semibold text-foreground line-clamp-2 leading-tight mb-1">
-          {activity.name || "Untitled"}
-        </h4>
-        <div className="flex items-center gap-1 text-xs text-muted-foreground mt-auto">
-          <MapPin className="w-3 h-3 shrink-0" />
-          <span className="truncate">{activity.location || "No location"}</span>
-        </div>
-        <div className="flex items-center justify-between mt-1.5 pt-1.5 border-t border-border/30">
-          <span className="text-[11px] text-muted-foreground">{activity.duration}</span>
-          {activity.cost > 0 && <span className="text-xs font-semibold text-foreground">€{activity.cost}</span>}
-        </div>
+        {/* Booking link — integrated footer */}
         {activity.booking_url && (
-          <a
-            href={activity.booking_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={(e) => e.stopPropagation()}
-            className="flex items-center gap-1.5 mt-2 px-3 py-1.5 bg-primary/10 hover:bg-primary/20 active:bg-primary/30 text-primary text-[10px] font-semibold rounded-xl transition-colors w-full justify-center border border-primary/20"
-          >
-            <ExternalLink className="w-3 h-3 shrink-0" />
-            Book / View Link
-          </a>
+          <>
+            <div className="h-px bg-border/40 mx-3" />
+            <a
+              href={activity.booking_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="flex items-center justify-center gap-1.5 px-3 py-2.5 text-primary text-xs font-semibold hover:bg-primary/8 transition-colors w-full"
+            >
+              <ExternalLink className="w-3 h-3 shrink-0" />
+              Book / View Link
+            </a>
+          </>
         )}
       </div>
-    </div>
 
-      {/* Drop indicator - after */}
       {isDragOver && dropPosition === 'after' && (
         <div className="absolute -right-2 top-0 bottom-0 w-1 bg-primary rounded-full z-30" />
       )}
@@ -283,13 +432,29 @@ const AddSlotCard = ({
 );
 
 // ─── Transport Bubble ───────────────────────────────────────────────
-const TransportBubble = ({ type, duration }: { type: string; duration: string }) => {
-  const t = transportTypes.find((x) => x.value === type);
-  const Icon = t?.icon || Bus;
+const TransportBubble = ({ activity }: { activity: BuilderActivity }) => {
+  // Determine icon: flight-type activities show plane; others use transportType
+  let Icon: React.ElementType = Bus;
+  if (activity.type === "transport" || activity.type === "flight") {
+    const sub = transportSubtypes.find(s => s.value === (activity.subtype ?? activity.type));
+    Icon = sub?.icon ?? Plane;
+  } else {
+    const t = transportTypes.find(x => x.value === activity.transportType);
+    Icon = t?.icon ?? Bus;
+  }
+
+  const isFlightType = (activity.type === "transport" && activity.subtype === "flight") || activity.type === "flight";
+  const duration = (activity.type === "transport" || activity.type === "flight")
+    ? activity.duration
+    : activity.transportDuration;
+
   return (
-    <div className="flex flex-col items-center justify-center w-11 h-11 bg-background rounded-full border border-border shadow-sm shrink-0 z-10">
-      <Icon className="w-3.5 h-3.5 text-muted-foreground" />
-      <span className="text-[8px] font-medium text-muted-foreground">{duration}</span>
+    <div className={cn(
+      "flex flex-col items-center justify-center w-11 h-11 bg-background rounded-full border shadow-sm shrink-0 z-10",
+      isFlightType ? "border-sky-300 dark:border-sky-700" : "border-border"
+    )}>
+      <Icon className={cn("w-3.5 h-3.5", isFlightType ? "text-sky-500" : "text-muted-foreground")} />
+      <span className="text-[8px] font-medium text-muted-foreground leading-none mt-0.5">{duration}</span>
     </div>
   );
 };
@@ -321,46 +486,56 @@ const ActivityDialog = ({
 
   useEffect(() => { originalRef.current = activity; setForm(activity); }, [activity]);
 
+  const updateForm = (updates: Partial<BuilderActivity>) => {
+    const updated = { ...form, ...updates };
+    // Hotel cost auto-calc
+    if (updated.type === "accommodation") {
+      if ("nights" in updates && updated.cost_per_night) {
+        updated.cost = (updated.nights ?? 0) * updated.cost_per_night;
+      } else if ("cost_per_night" in updates && updated.nights) {
+        updated.cost = updated.nights * (updated.cost_per_night ?? 0);
+      } else if ("cost" in updates && updated.nights && updated.nights > 0) {
+        updated.cost_per_night = Math.round((updated.cost ?? 0) / updated.nights);
+      }
+    }
+    setForm(updated);
+    if (isEditing) onLiveSave?.(updated);
+  };
+
+  // When type changes: reset subtype to first option, update name to default
+  const handleTypeChange = (newType: string) => {
+    const subtypes: Record<string, typeof transportSubtypes> = {
+      transport: transportSubtypes,
+      food: foodSubtypes,
+      experience: experienceSubtypes,
+    };
+    const firstSub = subtypes[newType]?.[0]?.value;
+    const newName = defaultActivityName(newType, firstSub);
+    updateForm({ type: newType, subtype: firstSub, name: form.name || newName });
+  };
+
+  const handleSubtypeChange = (newSubtype: string) => {
+    const newName = defaultActivityName(form.type, newSubtype);
+    updateForm({ subtype: newSubtype, name: form.name === defaultActivityName(form.type, form.subtype) ? newName : form.name });
+  };
+
   const fetchLinkImage = async () => {
     const url = form.booking_url?.trim();
     if (!url) return;
     setIsFetchingImage(true);
     try {
-      // microlink.io: works with bot-protected sites, returns structured OG data
-      const resp = await fetch(`https://api.microlink.io/?url=${encodeURIComponent(url)}`, {
-        signal: AbortSignal.timeout(12000),
-      });
+      const resp = await fetch(`https://api.microlink.io/?url=${encodeURIComponent(url)}`, { signal: AbortSignal.timeout(12000) });
       const data = await resp.json();
-      const imageUrl: string | undefined =
-        data?.data?.image?.url ??
-        data?.data?.screenshot?.url;
-      if (imageUrl) {
-        updateForm({ image_url: imageUrl });
-        toast.success("Image fetched from link!");
-      } else {
-        toast.error("No preview image found at this URL");
-      }
-    } catch {
-      toast.error("Could not fetch image from link");
-    } finally {
-      setIsFetchingImage(false);
-    }
-  };
-
-  // In edit mode: immediately propagate every change to the trip (triggers auto-save).
-  // In add mode: changes stay local until "Add Activity" is clicked.
-  const updateForm = (updates: Partial<BuilderActivity>) => {
-    const updated = { ...form, ...updates };
-    setForm(updated);
-    if (isEditing) onLiveSave?.(updated);
+      const imageUrl: string | undefined = data?.data?.image?.url ?? data?.data?.screenshot?.url;
+      if (imageUrl) { updateForm({ image_url: imageUrl }); toast.success("Image fetched!"); }
+      else toast.error("No preview image found at this URL");
+    } catch { toast.error("Could not fetch image from link"); }
+    finally { setIsFetchingImage(false); }
   };
 
   const handleCommit = () => {
-    if (!form.name.trim()) {
-      toast.error("Activity name is required");
-      return;
-    }
-    onSave(form);
+    const name = form.name.trim() || defaultActivityName(form.type, form.subtype);
+    onSave({ ...form, name });
     onOpenChange(false);
   };
 
@@ -372,100 +547,215 @@ const ActivityDialog = ({
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 2 * 1024 * 1024) {
-      toast.error("Image must be under 2MB");
-      return;
-    }
+    if (file.size > 2 * 1024 * 1024) { toast.error("Image must be under 2MB"); return; }
     const reader = new FileReader();
     reader.onloadend = () => updateForm({ image_url: reader.result as string });
     reader.readAsDataURL(file);
   };
 
-  const imagePreview = form.image_url || placeholderImages[form.type] || placeholderImages.activity;
-  const typeConfig = activityTypeConfig[form.type] ?? activityTypeConfig.activity;
+  const typeConfig = getActivityConfig(form);
   const TypeIcon = typeConfig.icon;
+  const imagePreview = form.image_url || getPlaceholderImage(form);
+
+  // Subtype options for current type
+  const subtypeOptions: { value: string; icon: React.ElementType; label: string }[] =
+    form.type === "transport" ? transportSubtypes :
+    form.type === "food" ? foodSubtypes :
+    form.type === "experience" ? experienceSubtypes : [];
+
+  const isFlightActivity = (form.type === "transport" && form.subtype === "flight") || form.type === "flight";
+  const isHotelActivity = form.type === "accommodation";
+  const isTransportActivity = form.type === "transport" || form.type === "flight";
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) handleCancel(); }}>
       <DialogContent className="w-full max-w-lg md:max-w-2xl lg:max-w-3xl max-h-[92vh] overflow-hidden flex flex-col p-0">
-        <DialogHeader className="px-6 pt-6 pb-0 shrink-0">
-          <DialogTitle className="flex items-center gap-2">
-            <span className={cn("p-1.5 rounded-lg", typeConfig.bgColor)}>
-              <TypeIcon className={cn("w-4 h-4", typeConfig.color)} />
+        {/* ── Header: editable activity name ── */}
+        <div className={cn("px-5 pt-5 pb-3 shrink-0 border-b border-border", typeConfig.bgColor)}>
+          <DialogDescription className="sr-only">Edit activity details.</DialogDescription>
+          <div className="flex items-center gap-2.5">
+            <span className={cn("p-2 rounded-xl bg-background/60 backdrop-blur-sm", typeConfig.color)}>
+              <TypeIcon className="w-4 h-4" />
             </span>
-            {isEditing ? "Edit Activity" : "Add Activity"}
-          </DialogTitle>
-          <DialogDescription className="sr-only">Fill in the details for this activity.</DialogDescription>
-        </DialogHeader>
+            <input
+              value={form.name}
+              onChange={(e) => updateForm({ name: e.target.value })}
+              placeholder={defaultActivityName(form.type, form.subtype)}
+              className={cn(
+                "flex-1 bg-transparent border-none outline-none text-lg font-bold placeholder:text-foreground/30",
+                typeConfig.color
+              )}
+              autoFocus
+            />
+          </div>
+        </div>
 
-        <div className="flex-1 overflow-y-auto">
-          <div className="grid lg:grid-cols-[1fr_260px] gap-0 divide-y lg:divide-y-0 lg:divide-x divide-border">
-            {/* ── Left: form ── */}
-            <div className="p-6 space-y-4">
-              {/* Type selector — visual icon row */}
+        <div className="flex-1 overflow-y-auto min-h-0">
+          <div className="grid lg:grid-cols-[1fr_250px] divide-y lg:divide-y-0 lg:divide-x divide-border">
+
+            {/* ── Left panel: main fields ── */}
+            <div className="p-5 space-y-4 overflow-y-auto">
+
+              {/* Type selector (primary types only) */}
               <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground uppercase tracking-wide">Type</Label>
+                <Label className="text-xs text-muted-foreground uppercase tracking-wide">Category</Label>
                 <div className="flex flex-wrap gap-1.5">
-                  {Object.entries(activityTypeConfig).map(([key, cfg]) => {
+                  {primaryTypes.map((key) => {
+                    const cfg = activityTypeConfig[key];
                     const Icon = cfg.icon;
                     const active = form.type === key;
                     return (
-                      <button
-                        key={key}
-                        type="button"
-                        onClick={() => updateForm({ type: key })}
+                      <button key={key} type="button" onClick={() => handleTypeChange(key)}
                         className={cn(
                           "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-all",
-                          active
-                            ? cn("border-transparent", cfg.bgColor, cfg.color)
-                            : "border-border bg-background text-muted-foreground hover:border-border/80 hover:text-foreground"
-                        )}
-                      >
-                        <Icon className="w-3.5 h-3.5" />
-                        {cfg.label}
+                          active ? cn("border-transparent", cfg.bgColor, cfg.color)
+                                 : "border-border bg-background text-muted-foreground hover:text-foreground"
+                        )}>
+                        <Icon className="w-3.5 h-3.5" />{cfg.label}
                       </button>
                     );
                   })}
+                  {/* Accommodation is a primary type already; also show legacy types if activity uses one */}
+                  {!primaryTypes.includes(form.type as typeof primaryTypes[number]) && form.type !== "accommodation" && (
+                    <span className={cn("flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium", typeConfig.bgColor, typeConfig.color)}>
+                      <TypeIcon className="w-3.5 h-3.5" />{typeConfig.label}
+                    </span>
+                  )}
                 </div>
               </div>
 
-              {/* Name */}
-              <div className="space-y-1.5">
-                <Label>Name <span className="text-destructive">*</span></Label>
-                <Input
-                  value={form.name}
-                  onChange={(e) => updateForm({ name: e.target.value })}
-                  placeholder="e.g. Visit Eiffel Tower"
-                  autoFocus
-                />
-              </div>
+              {/* Subtype selector */}
+              {subtypeOptions.length > 0 && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground uppercase tracking-wide">Sub-type</Label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {subtypeOptions.map((sub) => {
+                      const SubIcon = sub.icon;
+                      const active = form.subtype === sub.value;
+                      return (
+                        <button key={sub.value} type="button" onClick={() => handleSubtypeChange(sub.value)}
+                          className={cn(
+                            "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-all",
+                            active ? cn("border-transparent", typeConfig.bgColor, typeConfig.color)
+                                   : "border-border bg-background text-muted-foreground hover:text-foreground"
+                          )}>
+                          <SubIcon className="w-3.5 h-3.5" />{sub.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
-              {/* Time + Duration + Cost in one row */}
-              <div className="grid grid-cols-3 gap-3">
+              {/* Time + Duration */}
+              <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label className="text-xs">Time</Label>
                   <Input type="time" value={form.time} onChange={(e) => updateForm({ time: e.target.value })} />
                 </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Duration</Label>
-                  <Input value={form.duration} onChange={(e) => updateForm({ duration: e.target.value })} placeholder="2h" />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Cost (€)</Label>
-                  <Input type="number" min={0} value={form.cost || ""} onChange={(e) => updateForm({ cost: Number(e.target.value) || 0 })} placeholder="0" />
-                </div>
+                {!isFlightActivity && (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Duration</Label>
+                    <Input value={form.duration} onChange={(e) => updateForm({ duration: e.target.value })} placeholder="2h" />
+                  </div>
+                )}
               </div>
 
               {/* Location */}
               <div className="space-y-1.5">
-                <Label>Location</Label>
-                <Input value={form.location} onChange={(e) => updateForm({ location: e.target.value })} placeholder="e.g. Champ de Mars, Paris" />
+                <Label>{isFlightActivity ? "Departure Airport" : "Location"}</Label>
+                <Input value={form.location} onChange={(e) => updateForm({ location: e.target.value })}
+                  placeholder={isFlightActivity ? "e.g. London Heathrow (LHR)" : "e.g. Champ de Mars, Paris"} />
               </div>
 
-              {/* Transport (if not first) */}
-              {!isFirst && (
+              {/* ── Flight-specific fields ── */}
+              {isFlightActivity && (
+                <div className="space-y-3 p-3 rounded-lg bg-sky-50/50 dark:bg-sky-950/30 border border-sky-200/50 dark:border-sky-800/50">
+                  <p className="text-xs font-semibold text-sky-600 dark:text-sky-400 uppercase tracking-wide flex items-center gap-1.5">
+                    <Plane className="w-3.5 h-3.5" /> Flight Details
+                  </p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Arrival Airport</Label>
+                      <Input value={form.destination_airport || ""} onChange={(e) => updateForm({ destination_airport: e.target.value })} placeholder="e.g. Paris CDG" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Duration</Label>
+                      <Input value={form.duration} onChange={(e) => updateForm({ duration: e.target.value })} placeholder="e.g. 2h 30m" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Airline</Label>
+                      <Input value={form.airline || ""} onChange={(e) => updateForm({ airline: e.target.value })} placeholder="e.g. British Airways" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Flight No.</Label>
+                      <Input value={form.flight_number || ""} onChange={(e) => updateForm({ flight_number: e.target.value })} placeholder="e.g. BA123" />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Class</Label>
+                      <Select value={form.flight_class || "economy"} onValueChange={(v) => updateForm({ flight_class: v })}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="economy">Economy</SelectItem>
+                          <SelectItem value="premium_economy">Premium Economy</SelectItem>
+                          <SelectItem value="business">Business</SelectItem>
+                          <SelectItem value="first">First</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Cabin Bags</Label>
+                      <Input type="number" min={0} max={10} value={form.luggage_cabin ?? ""} onChange={(e) => updateForm({ luggage_cabin: Number(e.target.value) || 0 })} placeholder="0" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Check-in Bags</Label>
+                      <Input type="number" min={0} max={10} value={form.luggage_checkin ?? ""} onChange={(e) => updateForm({ luggage_checkin: Number(e.target.value) || 0 })} placeholder="0" />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ── Hotel-specific fields ── */}
+              {isHotelActivity && !form.is_checkout && (
+                <div className="space-y-3 p-3 rounded-lg bg-blue-50/50 dark:bg-blue-950/30 border border-blue-200/50 dark:border-blue-800/50">
+                  <p className="text-xs font-semibold text-blue-600 dark:text-blue-400 uppercase tracking-wide flex items-center gap-1.5">
+                    <Hotel className="w-3.5 h-3.5" /> Stay Details
+                  </p>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Nights</Label>
+                      <Input type="number" min={1} value={form.nights ?? ""} onChange={(e) => updateForm({ nights: Number(e.target.value) || undefined })} placeholder="3" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Per Night (€)</Label>
+                      <Input type="number" min={0} value={form.cost_per_night ?? ""} onChange={(e) => updateForm({ cost_per_night: Number(e.target.value) || undefined })} placeholder="120" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Stars</Label>
+                      <Input type="number" min={1} max={5} value={form.stars ?? ""} onChange={(e) => updateForm({ stars: Number(e.target.value) || undefined })} placeholder="4" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Check-in</Label>
+                      <Input type="time" value={form.checkin_time || ""} onChange={(e) => updateForm({ checkin_time: e.target.value })} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Check-out</Label>
+                      <Input type="time" value={form.checkout_time || ""} onChange={(e) => updateForm({ checkout_time: e.target.value })} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Bed Type</Label>
+                      <Input value={form.bed_types || ""} onChange={(e) => updateForm({ bed_types: e.target.value })} placeholder="King, Twin…" />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Transport to this activity (non-transport activities, non-first) */}
+              {!isTransportActivity && !isFirst && (
                 <div className="space-y-1.5 p-3 rounded-lg bg-muted/50 border border-border/50">
-                  <Label className="text-xs text-muted-foreground">Transport to this activity</Label>
+                  <Label className="text-xs text-muted-foreground">Getting here</Label>
                   <div className="grid grid-cols-2 gap-3">
                     <Select value={form.transportType} onValueChange={(v) => updateForm({ transportType: v })}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
@@ -482,39 +772,16 @@ const ActivityDialog = ({
                 </div>
               )}
 
-              {/* Notes */}
-              <div className="space-y-1.5">
-                <Label>Notes</Label>
-                <Textarea value={form.notes} onChange={(e) => updateForm({ notes: e.target.value })} placeholder="Booking tips, visa notes, opening hours..." rows={2} />
-              </div>
-
               {/* Booking URL */}
               <div className="space-y-1.5">
                 <Label className="flex items-center gap-1.5">
-                  <ExternalLink className="w-3.5 h-3.5 text-muted-foreground" />
-                  Booking Link
+                  <ExternalLink className="w-3.5 h-3.5 text-muted-foreground" /> Booking Link
                 </Label>
                 <div className="flex gap-2">
-                  <Input
-                    value={form.booking_url || ""}
-                    onChange={(e) => updateForm({ booking_url: e.target.value })}
-                    placeholder="https://booking.com/..."
-                    className="flex-1 text-sm"
-                  />
+                  <Input value={form.booking_url || ""} onChange={(e) => updateForm({ booking_url: e.target.value })} placeholder="https://…" className="flex-1 text-sm" />
                   {form.booking_url?.trim() && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={isFetchingImage}
-                      onClick={fetchLinkImage}
-                      title="Fetch preview image from this link"
-                    >
-                      {isFetchingImage ? (
-                        <span className="w-3.5 h-3.5 border border-current border-t-transparent rounded-full animate-spin" />
-                      ) : (
-                        <ImagePlus className="w-3.5 h-3.5" />
-                      )}
+                    <Button type="button" variant="outline" size="sm" disabled={isFetchingImage} onClick={fetchLinkImage} title="Fetch image from link">
+                      {isFetchingImage ? <span className="w-3.5 h-3.5 border border-current border-t-transparent rounded-full animate-spin" /> : <ImagePlus className="w-3.5 h-3.5" />}
                     </Button>
                   )}
                 </div>
@@ -526,61 +793,56 @@ const ActivityDialog = ({
               </div>
             </div>
 
-            {/* ── Right: image + live preview ── */}
-            <div className="p-6 space-y-4 bg-muted/20">
-              <div className="space-y-1.5">
+            {/* ── Right panel: image + notes + sticky cost ── */}
+            <div className="flex flex-col bg-muted/20">
+              {/* Image */}
+              <div className="p-4 space-y-2">
                 <Label className="text-xs text-muted-foreground uppercase tracking-wide">Image</Label>
                 <div className="relative w-full aspect-video rounded-xl overflow-hidden border border-border/50 bg-muted group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
                   <img src={imagePreview} alt="Preview" className="w-full h-full object-cover" />
                   <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                    <ImagePlus className="w-6 h-6 text-white" />
+                    <ImagePlus className="w-5 h-5 text-white" />
                   </div>
                 </div>
-                <Input
-                  value={form.image_url?.startsWith("data:") ? "" : form.image_url}
-                  onChange={(e) => updateForm({ image_url: e.target.value })}
-                  placeholder="Paste image URL…"
-                  className="text-xs h-8"
-                />
+                <Input value={form.image_url?.startsWith("data:") ? "" : form.image_url} onChange={(e) => updateForm({ image_url: e.target.value })} placeholder="Paste image URL…" className="text-xs h-8" />
                 <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
               </div>
 
-              {/* Mini card preview */}
-              <div className="space-y-1.5">
-                <p className="text-xs text-muted-foreground uppercase tracking-wide">Preview</p>
-                <div className={cn("rounded-xl border p-3 text-sm space-y-1", typeConfig.bgColor)}>
-                  <div className={cn("flex items-center gap-1.5 font-semibold", typeConfig.color)}>
-                    <TypeIcon className="w-3.5 h-3.5 shrink-0" />
-                    <span className="truncate">{form.name || "Activity name"}</span>
-                  </div>
-                  {form.location && (
-                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                      <MapPin className="w-3 h-3 shrink-0" />
-                      <span className="truncate">{form.location}</span>
-                    </div>
-                  )}
-                  <div className="flex items-center gap-3 text-xs text-muted-foreground pt-0.5">
-                    {form.time && <span className="flex items-center gap-0.5"><Clock className="w-3 h-3" />{form.time}</span>}
-                    {form.duration && <span>{form.duration}</span>}
-                    {form.cost > 0 && <span className="ml-auto font-semibold text-foreground">€{form.cost}</span>}
-                  </div>
-                </div>
+              {/* Notes — scrollable middle */}
+              <div className="flex-1 px-4 pb-2 space-y-1.5 min-h-0">
+                <Label className="text-xs text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                  <MessageSquare className="w-3 h-3" /> Notes
+                </Label>
+                <Textarea
+                  value={form.notes}
+                  onChange={(e) => updateForm({ notes: e.target.value })}
+                  placeholder="Booking tips, visa notes, opening hours, things to know…"
+                  className="resize-none h-28 text-sm"
+                />
+              </div>
+
+              {/* Sticky cost — always visible at bottom */}
+              <div className="px-4 py-3 border-t border-border bg-background/80 backdrop-blur-sm shrink-0">
+                <Label className="text-xs text-muted-foreground uppercase tracking-wide">Total Cost (€)</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={form.cost || ""}
+                  onChange={(e) => updateForm({ cost: Number(e.target.value) || 0 })}
+                  placeholder="0"
+                  className="mt-1 text-xl font-bold h-11"
+                />
               </div>
             </div>
           </div>
         </div>
 
-        <DialogFooter className="px-6 py-4 border-t border-border shrink-0">
+        <DialogFooter className="px-5 py-3 border-t border-border shrink-0 bg-background">
           <Button variant="outline" onClick={handleCancel}>Cancel</Button>
           {isEditing ? (
-            <Button onClick={() => onOpenChange(false)}>
-              Done
-            </Button>
+            <Button onClick={() => onOpenChange(false)}>Done</Button>
           ) : (
-            <Button onClick={handleCommit}>
-              <Save className="w-4 h-4 mr-1" />
-              Add Activity
-            </Button>
+            <Button onClick={handleCommit}><Save className="w-4 h-4 mr-1" />Add Activity</Button>
           )}
         </DialogFooter>
       </DialogContent>
@@ -1073,6 +1335,73 @@ const TripBuilder = () => {
       .catch(() => toast.error("Could not copy link"));
   };
 
+  // ─── Delete confirmation ─────────────────────────────────────────
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleteDayId, setDeleteDayId] = useState<string | null>(null);
+
+  const confirmRemoveDay = (dayId: string) => {
+    if (trip.days.length <= 1) { toast.error("Need at least one day"); return; }
+    setDeleteDayId(dayId);
+    setDeleteConfirmOpen(true);
+  };
+
+  const executeRemoveDay = () => {
+    if (deleteDayId) {
+      setTrip((p) => ({ ...p, days: p.days.filter((d) => d.id !== deleteDayId) }));
+    }
+    setDeleteConfirmOpen(false);
+    setDeleteDayId(null);
+  };
+
+  // ─── JSON Export ─────────────────────────────────────────────────
+  const handleExportJSON = () => {
+    const json = JSON.stringify(trip, null, 2);
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${trip.title.replace(/[^a-z0-9]/gi, "_").toLowerCase() || "trip"}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success("Trip exported as JSON");
+  };
+
+  // ─── JSON Import ─────────────────────────────────────────────────
+  const importFileRef = useRef<HTMLInputElement>(null);
+
+  const handleImportJSON = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const parsed = JSON.parse(ev.target?.result as string) as SavedTrip;
+        if (!parsed.days || !Array.isArray(parsed.days)) throw new Error("Invalid trip file");
+        // Give it a fresh ID to avoid collision, keep everything else
+        const imported: SavedTrip = {
+          ...parsed,
+          id: crypto.randomUUID(),
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        skipAutoSaveRef.current++;
+        tripLoadedRef.current = false; // allow re-save as new trip
+        setTrip(imported);
+        toast.success(`Imported "${imported.title}"`);
+      } catch {
+        toast.error("Invalid trip file — could not import");
+      }
+    };
+    reader.readAsText(file);
+    // Reset input so same file can be re-imported
+    e.target.value = "";
+  };
+
+  // ─── PDF Print ───────────────────────────────────────────────────
+  const handlePrint = () => {
+    window.print();
+  };
+
   const handleLeaveTrip = async () => {
     if (!id) return;
     try {
@@ -1120,7 +1449,7 @@ const TripBuilder = () => {
   const GAP = 14;
   const TRANSPORT_WIDTH = 44;
   const SLOT_WITH_GAP = SLOT_WIDTH + GAP + TRANSPORT_WIDTH;
-  const PADDING = 24;
+  const PADDING = 32; // Must be >= ARC_RADIUS so Day 1 arc stays within the SVG viewport
   const ROW_HEIGHT = 320;
   const ARC_RADIUS = 30;
   const TOP_OFFSET = 80; // extra space at top for Day 1 badge
@@ -1198,13 +1527,13 @@ const TripBuilder = () => {
     rowLayouts.forEach((row, idx) => {
       if (row.slotCount === 0) return;
       if (idx === 0) {
-        // Start from Day 1 badge, arc left → down → right (mirrors how day-change transitions work)
+        // Day 1: snake runs horizontally through the badge center (TOP_OFFSET/2),
+        // arcs left → down → right to enter the first row — badge sits centered on the line.
         const badgeCx = containerWidth / 2;
-        const badgeBottomY = TOP_OFFSET / 2 + 22;
-        const R = ARC_RADIUS;
-        parts.push(`M ${badgeCx} ${badgeBottomY}`);
-        parts.push(`L ${PADDING} ${badgeBottomY}`);
-        parts.push(`A ${R} ${R} 0 0 0 ${PADDING - R} ${badgeBottomY + R}`);
+        const badgeCenterY = TOP_OFFSET / 2; // badge is translate(-50%,-50%) so pos.y IS the center
+        parts.push(`M ${badgeCx} ${badgeCenterY}`);
+        parts.push(`L ${PADDING} ${badgeCenterY}`);
+        parts.push(`A ${R} ${R} 0 0 0 ${PADDING - R} ${badgeCenterY + R}`);
         parts.push(`L ${PADDING - R} ${row.yCenter - R}`);
         parts.push(`A ${R} ${R} 0 0 0 ${PADDING} ${row.yCenter}`);
       }
@@ -1283,7 +1612,7 @@ const TripBuilder = () => {
       )}
       <main className="flex-1 pt-16">
         {/* Hero Header */}
-        <section className="relative text-primary-foreground py-8 md:py-12 overflow-hidden">
+        <section className="relative text-primary-foreground py-8 md:py-12 overflow-hidden print:hidden">
           {/* Base gradient background */}
           <div className="absolute inset-0 bg-gradient-to-br from-primary to-primary/80" />
 
@@ -1427,7 +1756,7 @@ const TripBuilder = () => {
 
         {/* Trip overview — collapsible strip below hero */}
         {keyActivities.length > 0 && (
-          <div className="bg-card border-b border-border">
+          <div className="bg-card border-b border-border print:hidden">
             <div className="container mx-auto px-4">
               <div className="max-w-6xl mx-auto">
                 <button
@@ -1460,7 +1789,7 @@ const TripBuilder = () => {
 
         {/* Pending invite banner */}
         {pendingInviteId && (
-          <div className="bg-amber-50 dark:bg-amber-950/30 border-b border-amber-200 dark:border-amber-800 px-4 py-3">
+          <div className="bg-amber-50 dark:bg-amber-950/30 border-b border-amber-200 dark:border-amber-800 px-4 py-3 print:hidden">
             <div className="container mx-auto max-w-6xl flex items-center justify-between gap-4">
               <p className="text-sm text-amber-800 dark:text-amber-300">
                 <span className="font-semibold">{ownerProfile?.display_name ?? ownerProfile?.handle ?? "Someone"}</span> invited you to collaborate on this trip.
@@ -1469,13 +1798,34 @@ const TripBuilder = () => {
                 <Button size="sm" onClick={handleAcceptInvite} className="gap-1.5">
                   Accept & Join
                 </Button>
-                <Button size="sm" variant="ghost" onClick={() => navigate("/profile")} className="text-amber-700 dark:text-amber-400">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="text-amber-700 dark:text-amber-400"
+                  onClick={async () => {
+                    if (pendingInviteId) {
+                      try { await declineInvite(pendingInviteId); } catch { /* non-critical */ }
+                    }
+                    navigate("/profile");
+                  }}
+                >
                   Decline
                 </Button>
               </div>
             </div>
           </div>
         )}
+
+        {/* Print-only trip header */}
+        <div className="hidden print:block px-8 pt-6 pb-4 border-b-2 border-gray-300">
+          <h1 className="text-2xl font-bold text-black">{trip.title}</h1>
+          {trip.destination && <p className="text-sm text-gray-600 mt-0.5">📍 {trip.destination}</p>}
+          <div className="flex items-center gap-4 mt-1 text-xs text-gray-500">
+            <span>{trip.days.length} day{trip.days.length !== 1 ? "s" : ""}</span>
+            <span>{trip.travelers} traveler{trip.travelers !== 1 ? "s" : ""}</span>
+            {totalCost > 0 && <span>€{totalCost.toLocaleString()} total</span>}
+          </div>
+        </div>
 
         {/* Journey Section */}
         <section className="py-6 pb-12">
@@ -1486,31 +1836,44 @@ const TripBuilder = () => {
                   <Clock className="w-5 h-5 text-primary" /> Your Journey
                 </h2>
                 <div className="flex items-center gap-1">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="w-8 h-8 text-muted-foreground hover:text-foreground disabled:opacity-30"
-                    disabled={historySize === 0}
-                    onClick={handleUndo}
-                    title={`Undo (${historySize} step${historySize !== 1 ? "s" : ""}) — Ctrl+Z`}
-                  >
+                  {/* Undo / Redo */}
+                  <Button variant="ghost" size="icon" className="w-8 h-8 text-muted-foreground hover:text-foreground disabled:opacity-30"
+                    disabled={historySize === 0} onClick={handleUndo}
+                    title={`Undo (${historySize} step${historySize !== 1 ? "s" : ""}) — Ctrl+Z`}>
                     <Undo2 className="w-4 h-4" />
                   </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="w-8 h-8 text-muted-foreground hover:text-foreground disabled:opacity-30"
-                    disabled={futureSize === 0}
-                    onClick={handleRedo}
-                    title={`Redo (${futureSize} step${futureSize !== 1 ? "s" : ""}) — Ctrl+Y`}
-                  >
+                  <Button variant="ghost" size="icon" className="w-8 h-8 text-muted-foreground hover:text-foreground disabled:opacity-30"
+                    disabled={futureSize === 0} onClick={handleRedo}
+                    title={`Redo (${futureSize} step${futureSize !== 1 ? "s" : ""}) — Ctrl+Y`}>
                     <Redo2 className="w-4 h-4" />
+                  </Button>
+
+                  {/* Divider */}
+                  <div className="w-px h-5 bg-border mx-1" />
+
+                  {/* Import JSON */}
+                  <Button variant="ghost" size="icon" className="w-8 h-8 text-muted-foreground hover:text-foreground"
+                    title="Import trip from JSON" onClick={() => importFileRef.current?.click()}>
+                    <FileUp className="w-4 h-4" />
+                  </Button>
+                  <input ref={importFileRef} type="file" accept=".json,application/json" className="hidden" onChange={handleImportJSON} />
+
+                  {/* Export JSON */}
+                  <Button variant="ghost" size="icon" className="w-8 h-8 text-muted-foreground hover:text-foreground"
+                    title="Export trip as JSON" onClick={handleExportJSON}>
+                    <FileDown className="w-4 h-4" />
+                  </Button>
+
+                  {/* Print / PDF */}
+                  <Button variant="ghost" size="icon" className="w-8 h-8 text-muted-foreground hover:text-foreground"
+                    title="Print / Save as PDF" onClick={handlePrint}>
+                    <Printer className="w-4 h-4" />
                   </Button>
                 </div>
               </div>
 
-              {/* Journey Canvas */}
-              <div className="relative" style={{ height: svgHeight }}>
+              {/* Journey Canvas — hidden on print */}
+              <div className="relative print:hidden" style={{ height: svgHeight }}>
                 {/* SVG Snake Path */}
                 <svg className="absolute inset-0 pointer-events-none" width={containerWidth} height={svgHeight} style={{ overflow: "visible" }}>
                   <defs>
@@ -1528,15 +1891,15 @@ const TripBuilder = () => {
                   const dayIndex = trip.days.findIndex((d) => d.id === pos.day.id);
                   const isFirst = dayIndex === 0;
                   return (
-                    <div key={idx} className="absolute flex items-center gap-2.5 bg-background px-4 py-2 rounded-full shadow-lg border border-border z-20" style={{ left: pos.x, top: pos.y, transform: "translate(-50%, -50%)" }}>
-                      <div className="w-10 h-10 rounded-full bg-primary text-primary-foreground font-bold text-base flex items-center justify-center shrink-0">{dayIndex + 1}</div>
+                    <div key={idx} className="absolute flex items-center gap-2 bg-background pl-0.5 pr-3 h-10 rounded-full shadow-lg border border-border z-20" style={{ left: pos.x, top: pos.y, transform: "translate(-50%, -50%)" }}>
+                      <div className="w-9 h-9 rounded-full bg-primary text-primary-foreground font-bold text-sm flex items-center justify-center shrink-0">{dayIndex + 1}</div>
                       <Popover open={openDayPicker === pos.day.id} onOpenChange={(v) => setOpenDayPicker(v ? pos.day.id : null)}>
                         <PopoverTrigger asChild>
                           <button
                             onClick={(e) => e.stopPropagation()}
-                            className="flex items-center gap-1.5 text-base font-semibold text-foreground hover:text-primary transition-colors whitespace-nowrap"
+                            className="flex items-center gap-1 text-sm font-semibold text-foreground hover:text-primary transition-colors whitespace-nowrap"
                           >
-                            <CalendarIcon className="w-4 h-4 text-muted-foreground shrink-0" />
+                            <CalendarIcon className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                             {pos.day.date
                               ? new Date(pos.day.date + "T00:00:00").toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" })
                               : "Set date"}
@@ -1556,7 +1919,7 @@ const TripBuilder = () => {
                         </PopoverContent>
                       </Popover>
                       {(!isFirst || trip.days.length > 1) && (
-                        <Button variant="ghost" size="icon" className="w-6 h-6 text-destructive hover:bg-destructive/10 shrink-0" onClick={() => removeDay(pos.day.id)}>
+                        <Button variant="ghost" size="icon" className="w-6 h-6 text-destructive hover:bg-destructive/10 shrink-0" onClick={() => confirmRemoveDay(pos.day.id)}>
                           <Trash2 className="w-3 h-3" />
                         </Button>
                       )}
@@ -1573,17 +1936,14 @@ const TripBuilder = () => {
                       const showTransport = slotIndex > 0;
                       const activity = isAdd ? null : (slot as BuilderActivity);
 
-                      // Find the global activity index within the day
-                      const dayActivities = trip.days[row.dayIndex]?.activities || [];
-                      // Count activities in previous rows of the same day
+                      // Count activities in previous rows of the same day to compute the global index
                       let prevCount = 0;
                       for (const r of rowLayouts) {
                         if (r.dayIndex === row.dayIndex && r.rowIndex < row.rowIndex) {
                           prevCount += r.slots.filter((s) => s !== "add").length;
                         }
                       }
-                      const actIndex = prevCount + slotIndex - (showTransport ? 0 : 0);
-                      // Compute proper activity index excluding transport adjustments
+                      // Compute proper activity index excluding the "add" slot
                       const realSlotIndex = row.slots.slice(0, slotIndex).filter((s) => s !== "add").length;
                       const globalActIndex = prevCount + realSlotIndex;
 
@@ -1602,8 +1962,9 @@ const TripBuilder = () => {
                       const isAddDragOver = isAdd && dragOverItem?.dayId === currentDayId && dragOverItem?.activityIndex === -1;
 
                       const transportSpacer = showTransport && (
-                        <div className="flex items-center justify-center" style={{ width: GAP + TRANSPORT_WIDTH }}>
-                          {!isAdd && activity && <TransportBubble type={activity.transportType} duration={activity.transportDuration} />}
+                        // Fixed height matches SLOT_HEIGHT so bubble always centers on the snake line
+                        <div className="flex items-center justify-center shrink-0" style={{ width: GAP + TRANSPORT_WIDTH, height: SLOT_HEIGHT }}>
+                          {!isAdd && activity && <TransportBubble activity={activity} />}
                         </div>
                       );
 
@@ -1692,10 +2053,63 @@ const TripBuilder = () => {
               </div>
 
               {/* Add Day — bottom of timeline */}
-              <div className="flex justify-center mt-8">
+              <div className="flex justify-center mt-8 print:hidden">
                 <Button variant="outline" onClick={addDay} className="gap-2 px-6">
                   <Plus className="w-4 h-4" /> Add Day
                 </Button>
+              </div>
+
+              {/* ── Print-only itinerary view ── */}
+              <div className="hidden print:block space-y-8">
+                {trip.days.map((day, di) => {
+                  const dayLabel = day.date
+                    ? new Date(day.date + "T00:00:00").toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long", year: "numeric" })
+                    : `Day ${di + 1}`;
+                  return (
+                    <div key={day.id} style={{ breakInside: "avoid" }}>
+                      <div className="flex items-center gap-3 mb-3 pb-2 border-b-2 border-gray-200">
+                        <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground text-sm font-bold flex items-center justify-center shrink-0">{di + 1}</div>
+                        <div>
+                          <p className="font-bold text-base text-foreground">{dayLabel}</p>
+                          {day.theme && day.theme !== `Day ${di + 1}` && (
+                            <p className="text-xs text-muted-foreground">{day.theme}</p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="space-y-2 pl-11">
+                        {day.activities.map((act) => {
+                          const cfg = getActivityConfig(act);
+                          const Icon = cfg.icon;
+                          return (
+                            <div key={act.id} className="flex items-start gap-3 py-2 border-b border-gray-100 last:border-0">
+                              <div className="flex items-center gap-1 w-14 shrink-0">
+                                <Icon className="w-3 h-3 text-muted-foreground" />
+                                <span className="text-xs font-bold text-foreground">{act.time}</span>
+                              </div>
+                              <div className="flex-1">
+                                <p className="text-sm font-semibold text-foreground">{act.name || "Untitled"}</p>
+                                {act.location && <p className="text-xs text-muted-foreground">{act.location}</p>}
+                                {act.notes && <p className="text-xs text-gray-500 mt-0.5">{act.notes}</p>}
+                                {act.booking_url && <p className="text-xs text-blue-600 mt-0.5">{act.booking_url}</p>}
+                              </div>
+                              <div className="text-right shrink-0">
+                                {act.duration && <p className="text-xs text-muted-foreground">{act.duration}</p>}
+                                {act.cost > 0 && <p className="text-xs font-bold text-foreground">€{act.cost.toLocaleString()}</p>}
+                              </div>
+                            </div>
+                          );
+                        })}
+                        {day.activities.length === 0 && (
+                          <p className="text-xs text-muted-foreground italic">No activities</p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+                <div className="pt-4 border-t-2 border-gray-200 flex justify-between text-sm font-bold">
+                  <span>Total Cost</span>
+                  <span>€{totalCost.toLocaleString()}</span>
+                </div>
               </div>
 
               {/* Legend */}
@@ -1804,6 +2218,24 @@ const TripBuilder = () => {
           </div>
         </div>
       )}
+
+      {/* Delete Day Confirmation */}
+      <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertCircle className="w-5 h-5" /> Delete Day?
+            </DialogTitle>
+            <DialogDescription>
+              This will permanently remove the day and all its activities. This action can be undone with Ctrl+Z.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setDeleteConfirmOpen(false)}>Cancel</Button>
+            <Button variant="destructive" onClick={executeRemoveDay}>Delete Day</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Activity Dialog */}
       <ActivityDialog

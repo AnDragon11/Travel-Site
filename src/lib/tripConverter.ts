@@ -22,7 +22,7 @@ const inferTransportType = (activity: Activity): string => {
 /**
  * Infer transport duration (conservative default)
  */
-const inferTransportDuration = (activity: Activity): string => {
+const inferTransportDuration = (): string => {
   return '10 min';  // Conservative default
 };
 
@@ -47,7 +47,7 @@ const convertActivity = (
   // Transport defaults (AI doesn't provide these)
   // First activity in day has no incoming transport
   transportType: isFirstInDay ? 'walk' : inferTransportType(activity),
-  transportDuration: isFirstInDay ? '0 min' : inferTransportDuration(activity),
+  transportDuration: isFirstInDay ? '0 min' : inferTransportDuration(),
 });
 
 /**
