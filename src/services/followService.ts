@@ -7,9 +7,11 @@ export interface FollowCounts {
 
 /** Follow a user by their profile ID */
 export const followUser = async (followingId: string): Promise<void> => {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error("Not signed in");
   const { error } = await supabase
     .from("follows")
-    .insert({ following_id: followingId });
+    .insert({ follower_id: session.user.id, following_id: followingId });
   if (error) throw new Error(error.message);
 };
 

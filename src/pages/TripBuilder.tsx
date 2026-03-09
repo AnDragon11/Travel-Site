@@ -1034,6 +1034,15 @@ const TripBuilder = () => {
     getCollaborators(id).then(setCollaborators).catch(() => {});
   }, [id, user]);
 
+  // Group tools (votes + expenses) — only for collaborated trips
+  const [groupPanelOpen, setGroupPanelOpen] = useState(false);
+  const [groupTab, setGroupTab] = useState<"votes" | "expenses">("votes");
+  const [votes, setVotes] = useState<VoteSummary[]>([]);
+  const [expenses, setExpenses] = useState<TripExpense[]>([]);
+  const [expenseDesc, setExpenseDesc] = useState("");
+  const [expenseAmount, setExpenseAmount] = useState("");
+  const [addingExpense, setAddingExpense] = useState(false);
+
   // Load group tools data when panel is opened
   useEffect(() => {
     if (!id || !groupPanelOpen || !user) return;
@@ -1209,15 +1218,6 @@ const TripBuilder = () => {
 
   // Costs by day toggle
   const [showDayCosts, setShowDayCosts] = useState(false);
-
-  // Group tools (votes + expenses) — only for collaborated trips
-  const [groupPanelOpen, setGroupPanelOpen] = useState(false);
-  const [groupTab, setGroupTab] = useState<"votes" | "expenses">("votes");
-  const [votes, setVotes] = useState<VoteSummary[]>([]);
-  const [expenses, setExpenses] = useState<TripExpense[]>([]);
-  const [expenseDesc, setExpenseDesc] = useState("");
-  const [expenseAmount, setExpenseAmount] = useState("");
-  const [addingExpense, setAddingExpense] = useState(false);
 
   // Track width
   useEffect(() => {
