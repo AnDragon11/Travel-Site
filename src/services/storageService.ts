@@ -22,8 +22,6 @@ export const rowToSavedTrip = (row: {
   is_public: boolean;
   is_bucket_list: boolean;
   thumbnail?: string | null;
-  rating: number | null;
-  review: string | null;
   photos: string[] | null;
   tags: string[] | null;
   ai_metadata: unknown;
@@ -42,8 +40,6 @@ export const rowToSavedTrip = (row: {
   isFavorite: row.is_favorite,
   isPublic: row.is_public,
   isBucketList: row.is_bucket_list,
-  rating: row.rating ?? undefined,
-  review: row.review ?? undefined,
   photos: row.photos ?? undefined,
   tags: row.tags ?? undefined,
   aiMetadata: (row.ai_metadata as SavedTrip['aiMetadata']) ?? undefined,
@@ -112,8 +108,6 @@ const saveSupabaseTrip = async (trip: SavedTrip, userId: string): Promise<void> 
     is_favorite: trip.isFavorite ?? false,
     is_public: trip.isPublic ?? false,
     is_bucket_list: trip.isBucketList ?? false,
-    rating: trip.rating ?? null,
-    review: trip.review ?? null,
     photos: trip.photos ?? null,
     tags: trip.tags ?? null,
     ai_metadata: (trip.aiMetadata ?? null) as unknown as Json,

@@ -8,7 +8,8 @@ import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { ArrowLeft, CheckCircle, XCircle, Loader, Camera } from "lucide-react";
+import { ArrowLeft, CheckCircle, XCircle, Loader, Camera, Download } from "lucide-react";
+import { loadTrips } from "@/services/storageService";
 
 const HANDLE_RE = /^[a-z0-9_]+$/i;
 
@@ -188,6 +189,28 @@ const Profile = () => {
     setSavingPhone(false);
     if (error) toast.error(error.message);
     else toast.success("Phone number saved");
+  };
+
+  const [exportingTrips, setExportingTrips] = useState(false);
+
+  const handleExportAllTrips = async () => {
+    setExportingTrips(true);
+    try {
+      const trips = await loadTrips();
+      const json = JSON.stringify(trips, null, 2);
+      const blob = new Blob([json], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `diarytrips_export_${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success(`Exported ${trips.length} trip${trips.length !== 1 ? "s" : ""}`);
+    } catch {
+      toast.error("Export failed");
+    } finally {
+      setExportingTrips(false);
+    }
   };
 
   return (
@@ -380,6 +403,25 @@ const Profile = () => {
               </div>
               <p className="text-xs text-muted-foreground mt-1.5">A confirmation link will be sent to both addresses</p>
             </form>
+
+            {/* ── Export Data ── */}
+            <div className="p-4">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Export Data</p>
+              <p className="text-xs text-muted-foreground mb-3">Download all your trips as a JSON file for backup or transfer.</p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={exportingTrips}
+                onClick={handleExportAllTrips}
+                className="gap-2 h-8 text-xs"
+              >
+                {exportingTrips
+                  ? <><Loader className="w-3.5 h-3.5 animate-spin" /> Exporting…</>
+                  : <><Download className="w-3.5 h-3.5" /> Export All Trips</>
+                }
+              </Button>
+            </div>
 
             {/* ── Change Password ── */}
             <form onSubmit={handleSavePassword} className="p-4">

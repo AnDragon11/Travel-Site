@@ -3,12 +3,13 @@ import { useNavigate, Link } from "react-router-dom";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
-import { MapPin, Heart, Compass, Filter, Search, X, AlertCircle, Loader2 } from "lucide-react";
+import { MapPin, Heart, Compass, Filter, Search, X, AlertCircle, Loader2, Tag, ChevronDown } from "lucide-react";
 import { SavedTrip } from "@/lib/tripTypes";
 import { cn } from "@/lib/utils";
 import { loadTrips, saveTrip, deleteTrip } from "@/services/storageService";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { usePreferences } from "@/context/PreferencesContext";
 
 
 type SortOption = 'recent' | 'popular' | 'budget-low' | 'budget-high';
@@ -19,11 +20,13 @@ const TripCard = ({
   isFavorited,
   onToggleFavorite,
   author,
+  currencySymbol = "€",
 }: {
   trip: SavedTrip;
   isFavorited: boolean;
   onToggleFavorite: (trip: SavedTrip) => void;
   author?: { display_name: string | null; handle: string | null; avatar_url: string | null };
+  currencySymbol?: string;
 }) => {
   const navigate = useNavigate();
   const totalCost = trip.days.reduce((t, d) => t + d.activities.reduce((s, a) => s + ((a as { cost?: number }).cost || 0), 0), 0);
@@ -82,7 +85,7 @@ const TripCard = ({
             </div>
           )}
           <Link
-            to={author.handle ? `/user/${author.handle}` : '#'}
+            to={author.handle ? `/profile/@${author.handle}` : '#'}
             className="text-xs text-muted-foreground hover:text-foreground transition-colors truncate"
           >
             {author.display_name || (author.handle ? `@${author.handle}` : 'Anonymous')}
@@ -96,7 +99,7 @@ const TripCard = ({
           ))}
         </div>
         {totalCost > 0 && (
-          <span className="text-xs font-bold text-primary">€{totalCost.toLocaleString()}</span>
+          <span className="text-xs font-bold text-primary">{currencySymbol}{totalCost.toLocaleString()}</span>
         )}
       </div>
     </div>
@@ -104,13 +107,17 @@ const TripCard = ({
 };
 
 const Explore = () => {
+  const { currencySymbol } = usePreferences();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedDestination, setSelectedDestination] = useState<string | null>(null);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [minBudget, setMinBudget] = useState<number | null>(null);
   const [maxBudget, setMaxBudget] = useState<number | null>(null);
+  const [minDays, setMinDays] = useState<number | null>(null);
+  const [maxDays, setMaxDays] = useState<number | null>(null);
   const [sortBy, setSortBy] = useState<SortOption>('popular');
   const [showFilters, setShowFilters] = useState(false);
+  const [showTagFilter, setShowTagFilter] = useState(false);
   const [savedTrips, setSavedTrips] = useState<SavedTrip[]>([]);
   const [dbPublicTrips, setDbPublicTrips] = useState<SavedTrip[]>([]);
   const [tripAuthors, setTripAuthors] = useState<Record<string, { display_name: string | null; handle: string | null; avatar_url: string | null }>>({});
@@ -220,7 +227,7 @@ const Explore = () => {
     trip.days.reduce((t, d) => t + d.activities.reduce((s, a) => s + (a.cost || 0), 0), 0);
 
   const hasActiveFilters = !!(searchQuery || selectedDestination || selectedTags.length > 0 ||
-                           minBudget !== null || maxBudget !== null);
+                           minBudget !== null || maxBudget !== null || minDays !== null || maxDays !== null);
 
   const filteredTrips = allTrips.filter(trip => {
     if (searchQuery && !trip.title.toLowerCase().includes(searchQuery.toLowerCase()) &&
@@ -232,6 +239,8 @@ const Explore = () => {
     const tripCost = calculateTripCost(trip);
     if (minBudget !== null && tripCost < minBudget) return false;
     if (maxBudget !== null && tripCost > maxBudget) return false;
+    if (minDays !== null && trip.days.length < minDays) return false;
+    if (maxDays !== null && trip.days.length > maxDays) return false;
     return true;
   }).sort((a, b) => {
     switch (sortBy) {
@@ -252,6 +261,8 @@ const Explore = () => {
     setSelectedTags([]);
     setMinBudget(null);
     setMaxBudget(null);
+    setMinDays(null);
+    setMaxDays(null);
     setSortBy('popular');
   };
 
@@ -302,6 +313,40 @@ const Explore = () => {
             )}
           </div>
 
+          {/* Tag filter strip */}
+          {allTags.length > 0 && (
+            <div className="mb-3">
+              <button
+                onClick={() => setShowTagFilter(v => !v)}
+                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors py-1"
+              >
+                <Tag className="w-3.5 h-3.5" />
+                Tags
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showTagFilter ? "rotate-180" : ""}`} />
+                {selectedTags.length > 0 && (
+                  <span className="bg-primary text-primary-foreground text-[10px] font-semibold px-1.5 py-0.5 rounded-full">{selectedTags.length}</span>
+                )}
+              </button>
+              {showTagFilter && (
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {allTags.map(tag => (
+                    <button
+                      key={tag}
+                      onClick={() => toggleTag(tag)}
+                      className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${
+                        selectedTags.includes(tag)
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-accent text-accent-foreground hover:bg-accent/70"
+                      }`}
+                    >
+                      {tag}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Collapsible filters panel */}
           {showFilters && (
             <div className="bg-card rounded-xl border border-border/50 p-4 mb-4">
@@ -321,9 +366,33 @@ const Explore = () => {
                   </select>
                 </div>
 
+                {/* Duration */}
+                <div className="sm:w-44 shrink-0">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Duration (days)</p>
+                  <div className="flex gap-2 items-center">
+                    <input
+                      type="number"
+                      placeholder="Min"
+                      min={1}
+                      value={minDays || ""}
+                      onChange={(e) => setMinDays(e.target.value ? Number(e.target.value) : null)}
+                      className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary text-sm"
+                    />
+                    <span className="text-muted-foreground text-sm shrink-0">–</span>
+                    <input
+                      type="number"
+                      placeholder="Max"
+                      min={1}
+                      value={maxDays || ""}
+                      onChange={(e) => setMaxDays(e.target.value ? Number(e.target.value) : null)}
+                      className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary text-sm"
+                    />
+                  </div>
+                </div>
+
                 {/* Budget */}
                 <div className="sm:w-52 shrink-0">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Budget (€)</p>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Budget ({currencySymbol})</p>
                   <div className="flex gap-2 items-center">
                     <input
                       type="number"
@@ -388,6 +457,7 @@ const Explore = () => {
                   isFavorited={isTripFavorited(trip)}
                   onToggleFavorite={toggleFavorite}
                   author={tripAuthors[trip.id]}
+                  currencySymbol={currencySymbol}
                 />
               ))}
             </div>

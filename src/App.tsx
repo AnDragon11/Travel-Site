@@ -78,6 +78,7 @@ const App = () => (
                     <Route path="/signup" element={<Signup />} />
                     <Route path="/profile" element={<ProfilePage />} />
                     <Route path="/profile-settings" element={<ProtectedRoute><ProfileSettings /></ProtectedRoute>} />
+                    <Route path="/profile/:handle" element={<ProfilePage />} />
                     <Route path="/user/:handle" element={<ProfilePage />} />
                     <Route path="/trip" element={<TripBuilder />} />
                     <Route path="/trip/:id" element={<TripBuilder />} />

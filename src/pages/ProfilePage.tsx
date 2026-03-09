@@ -18,6 +18,9 @@ import {
 import {
   PendingInvite, getPendingInvites, acceptInvite, declineInvite,
 } from "@/services/collaboratorService";
+import {
+  followUser, unfollowUser, getIsFollowing, getFollowCounts, FollowCounts,
+} from "@/services/followService";
 
 // ─── Types ────────────────────────────────────────────────────────────
 interface ProfileData {
@@ -131,7 +134,9 @@ const TripCard = ({
 
 // ─── Main ProfilePage component ───────────────────────────────────────
 const ProfilePage = () => {
-  const { handle } = useParams<{ handle?: string }>();
+  const { handle: rawHandle } = useParams<{ handle?: string }>();
+  // Strip leading @ so /profile/@handle works alongside /user/handle
+  const handle = rawHandle?.startsWith("@") ? rawHandle.slice(1) : rawHandle;
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -157,6 +162,9 @@ const ProfilePage = () => {
   );
   const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
   const [respondingId, setRespondingId] = useState<string | null>(null);
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [followCounts, setFollowCounts] = useState<FollowCounts>({ followers: 0, following: 0 });
+  const [followLoading, setFollowLoading] = useState(false);
 
   // ── Load profile + trips ──────────────────────────────────────────
   useEffect(() => {
@@ -282,6 +290,30 @@ const ProfilePage = () => {
     getPendingInvites().then(setPendingInvites).catch(() => {});
   }, [isOwn, user]);
 
+  // Load follow counts (always) + follow status (other profiles only)
+  useEffect(() => {
+    if (!profile || profile.id === 'guest') return;
+    getFollowCounts(profile.id).then(setFollowCounts).catch(() => {});
+    if (!isOwn && user) getIsFollowing(profile.id).then(setIsFollowing).catch(() => {});
+  }, [profile, isOwn, user]);
+
+  const handleFollow = async () => {
+    if (!profile || !user) { toast.error("Sign in to follow users"); return; }
+    setFollowLoading(true);
+    try {
+      if (isFollowing) {
+        await unfollowUser(profile.id);
+        setIsFollowing(false);
+        setFollowCounts(c => ({ ...c, followers: Math.max(0, c.followers - 1) }));
+      } else {
+        await followUser(profile.id);
+        setIsFollowing(true);
+        setFollowCounts(c => ({ ...c, followers: c.followers + 1 }));
+      }
+    } catch { toast.error("Failed to update follow status"); }
+    finally { setFollowLoading(false); }
+  };
+
   const handleAcceptInvite = async (invite: PendingInvite) => {
     setRespondingId(invite.id);
     try {
@@ -387,8 +419,16 @@ const ProfilePage = () => {
                   </Button>
                 )}
                 {!isOwn && (
-                  <Button variant="outline" size="sm" disabled title="Coming soon">
-                    Follow
+                  <Button
+                    variant={isFollowing ? "default" : "outline"}
+                    size="sm"
+                    onClick={handleFollow}
+                    disabled={followLoading || !user}
+                    title={!user ? "Sign in to follow" : isFollowing ? "Unfollow" : "Follow"}
+                  >
+                    {followLoading ? (
+                      <span className="w-3.5 h-3.5 border border-current border-t-transparent rounded-full animate-spin" />
+                    ) : isFollowing ? "Following" : "Follow"}
                   </Button>
                 )}
               </div>
@@ -413,6 +453,14 @@ const ProfilePage = () => {
                       <p className="text-muted-foreground text-xs mt-0.5">bucket list</p>
                     </div>
                   )}
+                  <div className="text-center sm:text-left">
+                    <p className="font-bold text-foreground text-lg leading-none">{followCounts.followers}</p>
+                    <p className="text-muted-foreground text-xs mt-0.5">followers</p>
+                  </div>
+                  <div className="text-center sm:text-left">
+                    <p className="font-bold text-foreground text-lg leading-none">{followCounts.following}</p>
+                    <p className="text-muted-foreground text-xs mt-0.5">following</p>
+                  </div>
                 </div>
                 {isOwn && (
                   <div className="flex flex-wrap gap-2 pt-1">
