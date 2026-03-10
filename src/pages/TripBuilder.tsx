@@ -1643,12 +1643,6 @@ const TripBuilder = () => {
       // Insert into target day
       newDays[targetDayIdx].activities.splice(insertIndex, 0, movedActivity);
 
-      // Auto-sort by time after drop
-      newDays[sourceDayIdx].activities = sortByTime(newDays[sourceDayIdx].activities);
-      if (targetDayIdx !== sourceDayIdx) {
-        newDays[targetDayIdx].activities = sortByTime(newDays[targetDayIdx].activities);
-      }
-
       return { ...p, days: newDays };
     });
   };
