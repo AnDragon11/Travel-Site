@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
-  Plane, Hotel, ImagePlus, Save, Tag, ExternalLink, MessageSquare, X as XIcon,
+  Plane, Hotel, ImagePlus, Save, Tag, ExternalLink, MessageSquare, X as XIcon, Paperclip,
 } from "lucide-react";
 import { BuilderActivity, BuilderDay } from "@/lib/builderTypes";
 import {
@@ -48,6 +48,7 @@ export const ActivityDialog = ({
   const [selectedDayId, setSelectedDayId] = useState<string | undefined>(currentDayId);
   const originalRef = useRef<BuilderActivity>(activity);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const attachmentInputRef = useRef<HTMLInputElement>(null);
   const [isFetchingImage, setIsFetchingImage] = useState(false);
   const [tagInput, setTagInput] = useState("");
 
@@ -141,6 +142,22 @@ export const ActivityDialog = ({
     const reader = new FileReader();
     reader.onloadend = () => updateForm({ image_url: reader.result as string });
     reader.readAsDataURL(file);
+  };
+
+  const handleAttachmentUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    if (files.length === 0) return;
+    const MAX = 5 * 1024 * 1024;
+    const existing = form.attachments ?? [];
+    files.forEach(file => {
+      if (file.size > MAX) { toast.error(`${file.name} exceeds 5 MB`); return; }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        updateForm({ attachments: [...(form.attachments ?? existing), { name: file.name, url: reader.result as string, type: file.type }] });
+      };
+      reader.readAsDataURL(file);
+    });
+    e.target.value = "";
   };
 
   const typeConfig = getActivityConfig(form);
@@ -465,6 +482,32 @@ export const ActivityDialog = ({
                   </a>
                 )}
               </div>
+
+              {/* Attachments */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <Label className="flex items-center gap-1.5">
+                    <Paperclip className="w-3.5 h-3.5 text-muted-foreground" /> Attachments
+                  </Label>
+                  <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => attachmentInputRef.current?.click()}>
+                    + Add file
+                  </Button>
+                </div>
+                <input ref={attachmentInputRef} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.csv" multiple className="hidden" onChange={handleAttachmentUpload} />
+                {(form.attachments ?? []).length > 0 && (
+                  <div className="space-y-1">
+                    {(form.attachments ?? []).map((att, i) => (
+                      <div key={i} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-muted border border-border/50 text-xs">
+                        <Paperclip className="w-3 h-3 text-muted-foreground shrink-0" />
+                        <span className="flex-1 truncate text-foreground">{att.name}</span>
+                        <button type="button" onClick={() => updateForm({ attachments: (form.attachments ?? []).filter((_, j) => j !== i) })} className="text-muted-foreground hover:text-destructive shrink-0">
+                          <XIcon className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* ── Right panel: image + notes + sticky cost ── */}
@@ -495,30 +538,32 @@ export const ActivityDialog = ({
                 />
               </div>
 
-              {/* Sticky cost — always visible at bottom */}
-              <div className="px-4 py-3 border-t border-border bg-background/80 backdrop-blur-sm shrink-0">
-                <Label className="text-xs text-muted-foreground uppercase tracking-wide">Total Cost ({currencySymbol})</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  value={form.cost || ""}
-                  onChange={(e) => updateForm({ cost: Number(e.target.value) || 0 })}
-                  placeholder="0"
-                  className="mt-1 text-xl font-bold h-11"
-                />
-              </div>
             </div>
           </div>
         </div>
 
-        <DialogFooter className="px-5 py-3 border-t border-border shrink-0 bg-background">
-          <Button variant="outline" onClick={handleCancel}>Cancel</Button>
-          {isEditing ? (
-            <Button onClick={handleCommit}>Done</Button>
-          ) : (
-            <Button onClick={handleCommit}><Save className="w-4 h-4 mr-1" />Add Activity</Button>
-          )}
-        </DialogFooter>
+        {/* Footer: cost (always visible) + action buttons */}
+        <div className="px-5 py-3 border-t border-border shrink-0 bg-background flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2 flex-1 min-w-[180px]">
+            <Label className="text-xs text-muted-foreground uppercase tracking-wide whitespace-nowrap">Cost ({currencySymbol})</Label>
+            <Input
+              type="number"
+              min={0}
+              value={form.cost || ""}
+              onChange={(e) => updateForm({ cost: Number(e.target.value) || 0 })}
+              placeholder="0"
+              className="text-lg font-bold h-9 w-36"
+            />
+          </div>
+          <div className="flex gap-2 ml-auto">
+            <Button variant="outline" onClick={handleCancel}>Cancel</Button>
+            {isEditing ? (
+              <Button onClick={handleCommit}>Done</Button>
+            ) : (
+              <Button onClick={handleCommit}><Save className="w-4 h-4 mr-1" />Add Activity</Button>
+            )}
+          </div>
+        </div>
       </DialogContent>
     </Dialog>
   );

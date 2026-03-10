@@ -34,6 +34,7 @@ export interface BuilderActivity {
   flight_bond_id?: string;  // shared ID between departure and arrival activities
   is_arrival?: boolean;
   tags?: string[];
+  attachments?: { name: string; url: string; type: string }[];
 }
 
 export interface BuilderDay {

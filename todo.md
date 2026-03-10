@@ -3,12 +3,16 @@
 - **When a feature is implemented**, it should be deleted automatically here, no confirmation needed
 - **When a feature is crossed out**, it means it means it needs to be added in the next code execution
 - **When a feature is NOT crossed out**, it means it is a good idea that would be executed in the future, it should not be considered for now
+- **When only bugs are fixed AND/OR 1-2 partially done features**, version is added by 0.0.1
+- **When 3+ partially done features AND/OR new features are added**, version is added by 0.1.0
+- **Always** leave the headings along with one "- [ ]" each under it, even if it is empty 
 
 ---
 
 ## Bugs
 
 ### Trip Builder
+- [ ]
 ### Android App
 - [ ] Header is misplaced -- On my phone, the header is on top of the notification bar, causing it to move back and forth between the notifications and its supposed place!
 ---
@@ -19,13 +23,15 @@
 - [ ] **Per-day cost total** — show a running cost total beneath each day column (sum of all activity costs for that day)
 - [ ] **Time gap warnings** — highlight activities that overlap in time or leave no buffer between events
 - [ ] **Day duration bar** — visual indicator showing how many hours of the day are scheduled vs free
+- [ ] **Per-day cost total** — show a running cost total beneath each day column (sum of all activity costs for that day)
+- [ ] **Trip summary overhaul again** -- make things simpler that take less space
 
 ---
 
 ## New Ideas
 
-### TripBuilder
-
+### Trip Builder
+- [ ]
 ### Explore & Social
 - [ ] Copy single activity from someone else's trip into your own
 - [ ] Algorithmic suggestions based on travel history
@@ -40,10 +46,10 @@
 - [ ] Photo gallery UI — `photos: string[]` stored on trips/activities but no upload or display UI
 
 ### Group Travel
-- [ ] Group sub-itineraries — each collaborator manages their own flights from different origins and personal activity preferences
+- [ ] **Group sub-itineraries — each collaborator manages their own flights from different origins and personal activity preferences**
 
 ### AI & Generation
-- [ ] Phase 2 real API integration — Duffel (flights), Amadeus (hotels + POIs)
+- [ ] **Phase 2 real API integration — Duffel (flights), Amadeus (hotels + POIs)**
 - [ ] Re-generate a single day — keep rest of trip, ask AI to redo just Day N
 - [ ] AI activity suggestions inline — "suggest 3 alternatives to this activity"
 - [ ] Natural language trip editing — "move the Louvre to Day 2 morning"
@@ -51,7 +57,7 @@
 - [ ] Visa & entry requirements surfaced as a structured field (already in AI prompt, not shown in UI)
 
 ### Trip Diary (Post-Trip)
-- [ ] Photo upload per activity (field exists, no upload UI)
+- [ ] **Photo upload per activity (field exists, no upload UI)**
 - [ ] Star rating per activity visited
 - [ ] "Did you do this?" checklist mode for during the trip
 - [ ] Memory book / PDF export of completed diary with photos

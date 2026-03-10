@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useRef, useEffect, useMemo, Fragment } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
@@ -20,8 +20,8 @@ import {
 import { usePreferences } from "@/context/PreferencesContext";
 import { toast } from "sonner";
 import { BuilderActivity, BuilderDay } from "@/lib/builderTypes";
-import { activityTypeConfig, getActivityConfig, GAP } from "@/lib/builderConstants";
-import { BuilderSlot, AddSlotCard } from "@/components/builder/BuilderSlot";
+import { activityTypeConfig, getActivityConfig, GAP, SLOT_WIDTH, BOND_COLOR_HEX } from "@/lib/builderConstants";
+import { BuilderSlot, AddSlotCard, DragGhost } from "@/components/builder/BuilderSlot";
 import { ActivityDialog } from "@/components/builder/ActivityDialog";
 import { useSnakeCanvas } from "@/hooks/useSnakeCanvas";
 import { useTripHistory } from "@/hooks/useTripHistory";
@@ -88,7 +88,7 @@ const TripBuilder = () => {
   const realtimeChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const tripUpdatedAtRef = useRef<string>("");
   const [shareOpen, setShareOpen] = useState(false);
-  const [overviewOpen, setOverviewOpen] = useState(true);
+  const [overviewOpen, setOverviewOpen] = useState(false);
   const [thumbnailPickerOpen, setThumbnailPickerOpen] = useState(false);
   const [openDayPicker, setOpenDayPicker] = useState<string | null>(null); // day ID with open calendar picker
 
@@ -372,6 +372,7 @@ const TripBuilder = () => {
 
   // Activity type filter
   const [filterTypes, setFilterTypes] = useState<string[]>([]);
+  const [filterOpen, setFilterOpen] = useState(false);
 
   // Costs by day toggle
   const [showDayCosts, setShowDayCosts] = useState(false);
@@ -1415,10 +1416,53 @@ const TripBuilder = () => {
         <section className="py-6 pb-12">
           <div className="container mx-auto px-4">
             <div className="max-w-6xl mx-auto" ref={containerRef}>
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-bold text-foreground flex items-center gap-2">
-                  <Clock className="w-5 h-5 text-primary" /> Your Journey
-                </h2>
+              <div className="flex items-center justify-between mb-6 gap-2 flex-wrap">
+                {/* Left: filter toggle + inline chips */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  {trip.days.some(d => d.activities.length > 0) && (
+                    <button
+                      onClick={() => setFilterOpen(v => !v)}
+                      className={cn(
+                        "flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium transition-all shrink-0",
+                        (filterOpen || filterTypes.length > 0)
+                          ? "border-primary/50 bg-primary/10 text-primary"
+                          : "border-border bg-background text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      <Filter className="w-3.5 h-3.5" />
+                      {filterTypes.length > 0 ? `${filterTypes.length} active` : "Filter"}
+                    </button>
+                  )}
+                  {filterOpen && trip.days.some(d => d.activities.length > 0) && (
+                    <>
+                      {Object.entries(activityTypeConfig)
+                        .filter(([key]) => ["transport","accommodation","food","experience","flight","sightseeing","activity","shopping","dining","cafe"].includes(key))
+                        .filter(([key]) => trip.days.some(d => d.activities.some(a => a.type === key || a.subtype === key)))
+                        .map(([key, cfg]) => {
+                          const Icon = cfg.icon;
+                          const active = filterTypes.includes(key);
+                          return (
+                            <button
+                              key={key}
+                              onClick={() => setFilterTypes(prev => prev.includes(key) ? prev.filter(t => t !== key) : [...prev, key])}
+                              className={cn(
+                                "flex items-center gap-1 px-2.5 py-1 rounded-full border text-xs font-medium transition-all",
+                                active ? cn("border-transparent", cfg.bgColor, cfg.color) : "border-border bg-background text-muted-foreground hover:text-foreground"
+                              )}
+                            >
+                              <Icon className="w-3 h-3" />{cfg.label}
+                            </button>
+                          );
+                        })}
+                      {filterTypes.length > 0 && (
+                        <button onClick={() => setFilterTypes([])} className="text-xs text-muted-foreground hover:text-foreground underline">
+                          Clear
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
+
                 <div className="flex items-center gap-1">
                   {/* Undo / Redo */}
                   <Button variant="ghost" size="icon" className="w-8 h-8 text-muted-foreground hover:text-foreground disabled:opacity-30"
@@ -1470,36 +1514,6 @@ const TripBuilder = () => {
                 </div>
               </div>
 
-              {/* Activity type filter chips */}
-              {trip.days.some(d => d.activities.length > 0) && (
-                <div className="flex items-center gap-2 mb-4 flex-wrap print:hidden">
-                  <Filter className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                  {Object.entries(activityTypeConfig)
-                    .filter(([key]) => ["transport","accommodation","food","experience","flight","sightseeing","activity","shopping","dining","cafe"].includes(key))
-                    .filter(([key]) => trip.days.some(d => d.activities.some(a => a.type === key || (a.subtype === key))))
-                    .map(([key, cfg]) => {
-                      const Icon = cfg.icon;
-                      const active = filterTypes.includes(key);
-                      return (
-                        <button
-                          key={key}
-                          onClick={() => setFilterTypes(prev => prev.includes(key) ? prev.filter(t => t !== key) : [...prev, key])}
-                          className={cn(
-                            "flex items-center gap-1 px-2.5 py-1 rounded-full border text-xs font-medium transition-all",
-                            active ? cn("border-transparent", cfg.bgColor, cfg.color) : "border-border bg-background text-muted-foreground hover:text-foreground"
-                          )}
-                        >
-                          <Icon className="w-3 h-3" />{cfg.label}
-                        </button>
-                      );
-                    })}
-                  {filterTypes.length > 0 && (
-                    <button onClick={() => setFilterTypes([])} className="text-xs text-muted-foreground hover:text-foreground underline ml-1">
-                      Clear
-                    </button>
-                  )}
-                </div>
-              )}
 
               {/* Journey Canvas — hidden on print */}
               <div className="relative print:hidden" style={{ height: svgHeight }}>
@@ -1599,13 +1613,42 @@ const TripBuilder = () => {
                       // For "Add Activity" slot
                       const isAddDragOver = isAdd && dragOverItem?.dayId === currentDayId && dragOverItem?.activityIndex === -1;
 
+                      // AddSlotCard bond color — inherits the snake segment color if last activity has an open bond
+                      const addSlotBondColor = (() => {
+                        if (!isAdd) return undefined;
+                        const day = trip.days[row.dayIndex];
+                        if (!day || day.activities.length === 0) return undefined;
+                        const last = day.activities[day.activities.length - 1];
+                        if (last.type === 'accommodation' && !last.is_checkout && last.hotel_bond_id) {
+                          const hasCheckout = day.activities.some(a => a.is_checkout && a.hotel_bond_id === last.hotel_bond_id);
+                          if (!hasCheckout) return BOND_COLOR_HEX[bondColorMap[last.hotel_bond_id]];
+                        }
+                        const isFlightDep = (last.type === 'transport' && last.subtype === 'flight') || last.type === 'flight';
+                        if (isFlightDep && !last.is_arrival && last.flight_bond_id) {
+                          const hasArrival = day.activities.some(a => a.is_arrival && a.flight_bond_id === last.flight_bond_id);
+                          if (!hasArrival) return BOND_COLOR_HEX[bondColorMap[last.flight_bond_id]];
+                        }
+                        return undefined;
+                      })();
+
+                      // Ghost position for drag-over (accounts for RTL row direction)
+                      const showGhostBefore = isDragOver && (row.isRTL ? dropPosition === 'after' : dropPosition === 'before');
+                      const showGhostAfter  = isDragOver && (row.isRTL ? dropPosition === 'before' : dropPosition === 'after');
+
                       const gap = showTransport && (
                         <div className="shrink-0" style={{ width: GAP }} />
                       );
+                      const ghostGap = <div className="shrink-0" style={{ width: GAP }} />;
 
+                      const slotKey = isAdd ? `add-${row.dayIndex}` : activity!.id;
                       return (
+                        <Fragment key={slotKey}>
+                        {showGhostBefore && (
+                          <div className="flex items-center shrink-0">
+                            {ghostGap}<DragGhost />
+                          </div>
+                        )}
                         <div
-                          key={isAdd ? `add-${row.dayIndex}` : activity!.id}
                           className={cn(
                             "flex items-center transition-opacity duration-200",
                             !isAdd && filterTypes.length > 0 && !filterTypes.includes(activity!.type) && !filterTypes.includes(activity!.subtype ?? "") && "opacity-20"
@@ -1616,6 +1659,7 @@ const TripBuilder = () => {
                             <AddSlotCard
                               onClick={() => openAddActivity(trip.days[row.dayIndex].id)}
                               isDragOver={isAddDragOver}
+                              bondColor={addSlotBondColor}
                               onDragOver={(e) => {
                                 e.preventDefault();
                                 e.stopPropagation();
@@ -1718,6 +1762,12 @@ const TripBuilder = () => {
                           )}
                           {row.isRTL && gap}
                         </div>
+                        {showGhostAfter && (
+                          <div className="flex items-center shrink-0">
+                            {ghostGap}<DragGhost />
+                          </div>
+                        )}
+                        </Fragment>
                       );
                     })}
                   </div>

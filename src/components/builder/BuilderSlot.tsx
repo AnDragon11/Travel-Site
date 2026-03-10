@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 import {
   Plane, Clock, MapPin, GripVertical, Pencil, CopyPlus, Trash2, ExternalLink, Star,
-  MessageSquare, Plus,
+  MessageSquare, Plus, Paperclip,
 } from "lucide-react";
 import { BuilderActivity } from "@/lib/builderTypes";
 import { getActivityConfig, getPlaceholderImage, BOND_STYLE, BondColor } from "@/lib/builderConstants";
@@ -50,9 +50,6 @@ export const BuilderSlot = ({
 
   return (
     <div className="relative" style={{ width: 200 }}>
-      {isDragOver && dropPosition === 'before' && (
-        <div className="absolute -left-2 top-0 bottom-0 w-1 bg-primary rounded-full z-30" />
-      )}
 
       <div
         draggable={isDraggable}
@@ -142,6 +139,12 @@ export const BuilderSlot = ({
           {activity.notes?.trim() && (
             <MessageSquare className="w-3 h-3 text-muted-foreground shrink-0" title="Has notes" />
           )}
+          {(activity.attachments?.length ?? 0) > 0 && (
+            <span className="flex items-center gap-0.5 text-muted-foreground shrink-0" title={`${activity.attachments!.length} attachment${activity.attachments!.length !== 1 ? "s" : ""}`}>
+              <Paperclip className="w-3 h-3" />
+              <span className="text-[10px]">{activity.attachments!.length}</span>
+            </span>
+          )}
         </div>
 
         {/* Text content */}
@@ -205,9 +208,6 @@ export const BuilderSlot = ({
         )}
       </div>
 
-      {isDragOver && dropPosition === 'after' && (
-        <div className="absolute -right-2 top-0 bottom-0 w-1 bg-primary rounded-full z-30" />
-      )}
     </div>
   );
 };
@@ -218,24 +218,46 @@ export const AddSlotCard = ({
   onDragOver,
   onDrop,
   isDragOver = false,
+  bondColor,
 }: {
   onClick: () => void;
   onDragOver?: (e: React.DragEvent) => void;
   onDrop?: (e: React.DragEvent) => void;
   isDragOver?: boolean;
+  bondColor?: string; // hex color from snake timeline segment
 }) => (
   <button
     onClick={onClick}
     onDragOver={onDragOver}
     onDrop={onDrop}
+    style={bondColor ? { borderColor: bondColor + "99", backgroundColor: bondColor + "14" } : undefined}
     className={cn(
-      "flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-border/60 hover:border-primary/50 transition-all duration-200 w-[200px] h-[240px] shrink-0 bg-muted hover:bg-muted/80 cursor-pointer group",
+      "flex flex-col items-center justify-center rounded-xl border-2 border-dashed transition-all duration-200 w-[200px] h-[240px] shrink-0 cursor-pointer group",
+      !bondColor && "border-border/60 hover:border-primary/50 bg-muted hover:bg-muted/80",
       isDragOver && "ring-2 ring-primary ring-offset-2 border-primary"
     )}
   >
-    <div className="w-12 h-12 rounded-full bg-primary/10 group-hover:bg-primary/20 flex items-center justify-center mb-3 transition-colors">
-      <Plus className="w-6 h-6 text-primary" />
+    <div
+      className={cn("w-12 h-12 rounded-full flex items-center justify-center mb-3 transition-colors", !bondColor && "bg-primary/10 group-hover:bg-primary/20")}
+      style={bondColor ? { backgroundColor: bondColor + "33" } : undefined}
+    >
+      <Plus className={cn("w-6 h-6", !bondColor && "text-primary")} style={bondColor ? { color: bondColor } : undefined} />
     </div>
-    <span className="text-sm font-medium text-muted-foreground group-hover:text-foreground transition-colors">Add Activity</span>
+    <span
+      className={cn("text-sm font-medium transition-colors", !bondColor && "text-muted-foreground group-hover:text-foreground")}
+      style={bondColor ? { color: bondColor } : undefined}
+    >
+      Add Activity
+    </span>
   </button>
+);
+
+// ─── Drag Ghost Placeholder ─────────────────────────────────────────
+export const DragGhost = () => (
+  <div
+    className="rounded-xl border-2 border-dashed border-primary/50 bg-primary/5 w-[200px] shrink-0 flex items-center justify-center pointer-events-none"
+    style={{ minHeight: 240 }}
+  >
+    <GripVertical className="w-6 h-6 text-primary/30" />
+  </div>
 );
