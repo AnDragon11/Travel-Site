@@ -3,15 +3,11 @@
 ---
 
 ## Bugs
-
+### Android App
+- [ ] Header is misplaced -- On my phone, the header is on top of the notification bar, causing it to move back and forth between the notifications and its supposed place!
 ---
 
 ## Partially Done
-
-### TripBuilder
-- [ ] Hotel check-out auto-creation — bond visual (blue strip) exists but checkout must be made manually; should auto-insert on same day as check-in
-- [ ] Hotel amenities UI — stored as `string[]` but no UI to add/remove individual items; currently just one bed type text input
-- [ ] Flight 3-component rendering — `origin`, `destination_airport`, flight details stored but slot renders as one card; vision is Airport A + transport bubble + Airport B
 
 ---
 

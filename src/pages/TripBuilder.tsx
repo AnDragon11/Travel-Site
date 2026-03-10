@@ -1318,22 +1318,21 @@ const TripBuilder = () => {
         return { ...p, days: cleanDays };
       }
 
-      // 3. Auto-generate hotel checkout when checkout_time is filled on check-in
-      if (a.type === "accommodation" && !a.is_checkout && a.checkout_time) {
+      // 3. Auto-generate hotel checkout when nights is filled on check-in
+      if (a.type === "accommodation" && !a.is_checkout && a.nights) {
         // Remove existing checkout linked to this check-in
         const cleanDays = days.map(d => ({
           ...d,
           activities: d.activities.filter(x => !(x.is_checkout && x.hotel_bond_id === a.id)),
         }));
-        // Find which day index this check-in is on, then target day = dayIdx + nights (default 1)
+        // Target day = check-in day index + nights; default checkout time 12:00
         const dayIdx = cleanDays.findIndex(d => d.id === editingDayId);
-        const nightsOffset = a.nights ?? 1;
-        const targetDayIdx = Math.min(dayIdx + nightsOffset, cleanDays.length - 1);
+        const targetDayIdx = Math.min(dayIdx + a.nights, cleanDays.length - 1);
         const checkout: BuilderActivity = {
           ...createEmptyActivity("accommodation"),
           name: `Check-out: ${a.name || "Hotel"}`,
           location: a.location,
-          time: a.checkout_time,
+          time: a.checkout_time || "12:00",
           duration: "",
           hotel_bond_id: a.id,
           is_checkout: true,
@@ -1347,8 +1346,8 @@ const TripBuilder = () => {
         return { ...p, days: updatedDays };
       }
 
-      // Remove checkout if checkout_time was cleared
-      if (a.type === "accommodation" && !a.is_checkout && !a.checkout_time) {
+      // Remove checkout if nights was cleared
+      if (a.type === "accommodation" && !a.is_checkout && !a.nights) {
         const cleanDays = days.map(d => ({
           ...d,
           activities: d.activities.filter(x => !(x.is_checkout && x.hotel_bond_id === a.id)),
