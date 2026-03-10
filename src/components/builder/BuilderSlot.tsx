@@ -48,8 +48,16 @@ export const BuilderSlot = ({
   const bondStyle = bondColor ? BOND_STYLE[bondColor as BondColor] : null;
   const isSecondCard = isFlightArrival || isHotelCheckout;
 
+  // Visual position of insertion line, accounting for RTL
+  const lineLeft  = isDragOver && (isRTL ? dropPosition === 'after'  : dropPosition === 'before');
+  const lineRight = isDragOver && (isRTL ? dropPosition === 'before' : dropPosition === 'after');
+
   return (
     <div className="relative" style={{ width: 200 }}>
+      {/* Insertion line — left side */}
+      {lineLeft && (
+        <div className="absolute -left-[11px] top-0 bottom-0 w-[3px] rounded-full bg-primary z-30 shadow-[0_0_10px_2px_hsl(var(--primary)/0.5)] animate-in fade-in duration-100" />
+      )}
 
       <div
         draggable={isDraggable}
@@ -61,7 +69,7 @@ export const BuilderSlot = ({
           "relative group flex flex-col rounded-xl border transition-all duration-200 w-[200px] shrink-0 bg-card overflow-hidden hover:shadow-lg hover:-translate-y-1",
           config.bgColor,
           isDraggable ? "cursor-grab active:cursor-grabbing" : "cursor-pointer",
-          isDragging && "opacity-50",
+          isDragging && "opacity-0 pointer-events-none",
           // Bond strip: mirrored on RTL rows so the stripe always faces the partner card
           bondStyle && isSecondCard && (isRTL ? bondStyle.right : bondStyle.left),
           bondStyle && !isSecondCard && (isRTL ? bondStyle.left : bondStyle.right),
@@ -208,6 +216,10 @@ export const BuilderSlot = ({
         )}
       </div>
 
+      {/* Insertion line — right side */}
+      {lineRight && (
+        <div className="absolute -right-[11px] top-0 bottom-0 w-[3px] rounded-full bg-primary z-30 shadow-[0_0_10px_2px_hsl(var(--primary)/0.5)] animate-in fade-in duration-100" />
+      )}
     </div>
   );
 };

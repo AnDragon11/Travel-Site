@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo, Fragment } from "react";
+import { useState, useRef, useEffect, useMemo, Fragment } from "react"; // Fragment still used in row render
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
@@ -21,7 +21,7 @@ import { usePreferences } from "@/context/PreferencesContext";
 import { toast } from "sonner";
 import { BuilderActivity, BuilderDay } from "@/lib/builderTypes";
 import { activityTypeConfig, getActivityConfig, GAP, SLOT_WIDTH, BOND_COLOR_HEX } from "@/lib/builderConstants";
-import { BuilderSlot, AddSlotCard, DragGhost } from "@/components/builder/BuilderSlot";
+import { BuilderSlot, AddSlotCard } from "@/components/builder/BuilderSlot";
 import { ActivityDialog } from "@/components/builder/ActivityDialog";
 import { useSnakeCanvas } from "@/hooks/useSnakeCanvas";
 import { useTripHistory } from "@/hooks/useTripHistory";
@@ -1632,33 +1632,18 @@ const TripBuilder = () => {
                         return undefined;
                       })();
 
-                      // Ghost position for drag-over (accounts for RTL row direction)
-                      const showGhostBefore = isDragOver && (row.isRTL ? dropPosition === 'after' : dropPosition === 'before');
-                      const showGhostAfter  = isDragOver && (row.isRTL ? dropPosition === 'before' : dropPosition === 'after');
-
-                      // Gaps: ghost supplies its own surrounding gaps; suppress slot's gap on the ghost side to avoid doubling
-                      const ltrGap = !row.isRTL && showTransport && !showGhostBefore
-                        ? <div className="shrink-0" style={{ width: GAP }} /> : null;
-                      const rtlGap = row.isRTL && showTransport && !showGhostAfter
-                        ? <div className="shrink-0" style={{ width: GAP }} /> : null;
+                      const gap = showTransport && <div className="shrink-0" style={{ width: GAP }} />;
 
                       const slotKey = isAdd ? `add-${row.dayIndex}` : activity!.id;
                       return (
                         <Fragment key={slotKey}>
-                        {showGhostBefore && (
-                          <div className="flex items-center shrink-0">
-                            {slotIndex > 0 && <div className="shrink-0" style={{ width: GAP }} />}
-                            <DragGhost />
-                            <div className="shrink-0" style={{ width: GAP }} />
-                          </div>
-                        )}
                         <div
                           className={cn(
-                            "flex items-center transition-all duration-150",
+                            "flex items-center",
                             !isAdd && filterTypes.length > 0 && !filterTypes.includes(activity!.type) && !filterTypes.includes(activity!.subtype ?? "") && "opacity-20"
                           )}
                         >
-                          {ltrGap}
+                          {!row.isRTL && gap}
                           {isAdd ? (
                             <AddSlotCard
                               onClick={() => openAddActivity(trip.days[row.dayIndex].id)}
@@ -1771,15 +1756,8 @@ const TripBuilder = () => {
                             />
                             </div>
                           )}
-                          {rtlGap}
+                          {row.isRTL && gap}
                         </div>
-                        {showGhostAfter && (
-                          <div className="flex items-center shrink-0">
-                            <div className="shrink-0" style={{ width: GAP }} />
-                            <DragGhost />
-                            {slotIndex < row.slots.length - 1 && <div className="shrink-0" style={{ width: GAP }} />}
-                          </div>
-                        )}
                         </Fragment>
                       );
                     })}
