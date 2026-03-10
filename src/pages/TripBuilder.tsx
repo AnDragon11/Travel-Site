@@ -279,6 +279,7 @@ const BuilderSlot = ({
   isDragging = false,
   isDragOver = false,
   dropPosition,
+  bondColor,
 }: {
   activity: BuilderActivity;
   onEdit: () => void;
@@ -532,6 +533,12 @@ const ActivityDialog = ({
         updated.cost = updated.nights * (updated.cost_per_night ?? 0);
       } else if ("cost" in updates && updated.nights && updated.nights > 0) {
         updated.cost_per_night = Math.round((updated.cost ?? 0) / updated.nights);
+      }
+      // Auto-prefix hotel names with Check-in: / Check-out:
+      if ("name" in updates) {
+        const prefix = updated.is_checkout ? "Check-out: " : "Check-in: ";
+        const raw = (updated.name ?? "").replace(/^Check-(?:in|out):\s*/i, "");
+        updated.name = raw ? `${prefix}${raw}` : "";
       }
     }
     setForm(updated);
@@ -1323,7 +1330,7 @@ const TripBuilder = () => {
       setTrip((p) => ({
         ...p,
         days: p.days.map((d) => {
-          if (d.id === editingDayId) return { ...d, activities: d.activities.filter((_, i) => i !== editingIndex) };
+          if (d.id === editingDayId) return { ...d, activities: d.activities.filter(x => x.id !== a.id) };
           if (d.id === targetDayId) return { ...d, activities: [...d.activities, a] };
           return d;
         }),
@@ -1384,20 +1391,26 @@ const TripBuilder = () => {
 
       // 3. Auto-generate hotel checkout when nights is filled on check-in
       if (a.type === "accommodation" && !a.is_checkout && a.nights) {
-        // Remove existing checkout linked to this check-in
+        // Find existing checkout before removing (preserve user-entered data like notes/booking)
+        const existingCheckout = days.flatMap(d => d.activities).find(
+          x => x.is_checkout && (x.hotel_bond_id === a.id || (!x.hotel_bond_id && x.location === a.location && !!x.location))
+        );
+        // Remove existing checkout — by bond ID, with location fallback for older/AI-generated trips
         const cleanDays = days.map(d => ({
           ...d,
-          activities: d.activities.filter(x => !(x.is_checkout && x.hotel_bond_id === a.id)),
+          activities: d.activities.filter(x => !(
+            x.is_checkout && (x.hotel_bond_id === a.id || (!x.hotel_bond_id && x.location === a.location && !!x.location))
+          )),
         }));
         // Target day = check-in day index + nights; default checkout time 12:00
         const dayIdx = cleanDays.findIndex(d => d.id === editingDayId);
         const targetDayIdx = Math.min(dayIdx + a.nights, cleanDays.length - 1);
         const hotelName = (a.name || "").replace(/^Check-in:\s*/i, "") || a.location || "Hotel";
         const checkout: BuilderActivity = {
-          ...createEmptyActivity("accommodation"),
+          ...(existingCheckout ?? createEmptyActivity("accommodation")),
           name: `Check-out: ${hotelName}`,
           location: a.location,
-          time: a.checkout_time || "12:00",
+          time: a.checkout_time || existingCheckout?.time || "12:00",
           duration: "",
           hotel_bond_id: a.id,
           is_checkout: true,
@@ -1415,7 +1428,9 @@ const TripBuilder = () => {
       if (a.type === "accommodation" && !a.is_checkout && !a.nights) {
         const cleanDays = days.map(d => ({
           ...d,
-          activities: d.activities.filter(x => !(x.is_checkout && x.hotel_bond_id === a.id)),
+          activities: d.activities.filter(x => !(
+            x.is_checkout && (x.hotel_bond_id === a.id || (!x.hotel_bond_id && x.location === a.location && !!x.location))
+          )),
         }));
         return { ...p, days: cleanDays };
       }
@@ -1427,15 +1442,37 @@ const TripBuilder = () => {
   // Live-save: called on every field change when editing an existing activity
   const handleLiveSaveActivity = (a: BuilderActivity) => {
     if (editingIndex < 0) return;
-    setTrip((p) => ({
-      ...p,
-      days: p.days.map((d) => {
+    setTrip((p) => {
+      let days = p.days.map((d) => {
         if (d.id !== editingDayId) return d;
         const acts = [...d.activities];
         acts[editingIndex] = a;
         return { ...d, activities: acts };
-      }),
-    }));
+      });
+      // Sync hotel partner card name/location live
+      if (a.type === "accommodation" && !a.is_checkout) {
+        const hotelName = (a.name || "").replace(/^Check-in:\s*/i, "");
+        days = days.map(d => ({
+          ...d,
+          activities: d.activities.map(x =>
+            x.is_checkout && x.hotel_bond_id === a.id
+              ? { ...x, name: hotelName ? `Check-out: ${hotelName}` : x.name, location: a.location }
+              : x
+          ),
+        }));
+      } else if (a.type === "accommodation" && a.is_checkout && a.hotel_bond_id) {
+        const hotelName = (a.name || "").replace(/^Check-out:\s*/i, "");
+        days = days.map(d => ({
+          ...d,
+          activities: d.activities.map(x =>
+            x.id === a.hotel_bond_id
+              ? { ...x, name: hotelName ? `Check-in: ${hotelName}` : x.name }
+              : x
+          ),
+        }));
+      }
+      return { ...p, days };
+    });
   };
 
   // Revert: called on Cancel when editing — restores the original activity state
