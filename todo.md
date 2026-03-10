@@ -1,4 +1,8 @@
 # DiaryTrips — Feature Roadmap
+## NOTES
+- **When a feature is implemented**, it should be deleted automatically here, no confirmation needed
+- **When a feature is crossed out**, it means it means it needs to be added in the next code execution
+- **When a feature is NOT crossed out**, it means it is a good idea that would be executed in the future, it should not be considered for now
 
 ---
 
@@ -12,24 +16,23 @@
 ## Partially Done
 
 ### TripBuilder
-- [ ] **Auto-sync flight arrival** — when editing a departure card, sync airline/flight number/class/luggage to its bonded arrival card live
-- [ ] **Move bonded cards together** — when moving a hotel check-in or flight departure to a different day, prompt to also move the bonded checkout/arrival (or warn that the bond will break)
-- [ ] **Auto-sort by time** — after editing or dropping an activity, re-sort activities within that day by their time field
+- [x] **Auto-sync flight arrival** — when editing a departure card, sync airline/flight number/class/luggage to its bonded arrival card live
+- [x] **Move bonded cards together** — when moving a hotel check-in or flight departure to a different day, prompt to also move the bonded checkout/arrival (or warn that the bond will break)
+- [x] **Auto-sort by time** — after editing or dropping an activity, re-sort activities within that day by their time field
 - [ ] **Per-day cost total** — show a running cost total beneath each day column (sum of all activity costs for that day)
 - [ ] **Time gap warnings** — highlight activities that overlap in time or leave no buffer between events
 - [ ] **Day duration bar** — visual indicator showing how many hours of the day are scheduled vs free
-- [ ] **Activity tags on canvas** — small keyword chips on the activity card (e.g. "must-book", "optional") visible without opening the dialog
+- [x] **Activity tags on canvas** — small keyword chips on the activity card (e.g. "must-book", "optional") visible without opening the dialog
 
 ---
 
 ## New Ideas
 
 ### TripBuilder
-- [ ] Overview, voting and expenses overhaul -- All should be on the same interaction bundle. Ideally below the banner. A bit more visible than the current overview dropdown menu button. The overview itself should look much nicer. Something very similar to what the PDF would do. Keep icons such as airplanes and hotels! Since they would also have the expenses listed, that is where the split expenses comes in! The users are listed on top as a table. This is where we would know each person's expenses.
 
 ### Explore & Social
 - [ ] Copy single activity from someone else's trip into your own
-- [ ] Feed filter — show only trips from people you follow
+- [x] Feed filter — show only trips from people you follow
 - [ ] Algorithmic suggestions based on travel history
 - [ ] Trending destinations widget (aggregate most-planned destinations)
 - [ ] Comments on public trips

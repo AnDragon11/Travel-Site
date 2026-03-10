@@ -971,7 +971,7 @@ const TripBuilder = () => {
   const realtimeChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const tripUpdatedAtRef = useRef<string>("");
   const [shareOpen, setShareOpen] = useState(false);
-  const [overviewOpen, setOverviewOpen] = useState(false);
+  const [overviewOpen, setOverviewOpen] = useState(true);
   const [thumbnailPickerOpen, setThumbnailPickerOpen] = useState(false);
   const [openDayPicker, setOpenDayPicker] = useState<string | null>(null); // day ID with open calendar picker
 
@@ -1078,7 +1078,7 @@ const TripBuilder = () => {
   }, [id, user]);
 
   // Group tools (votes + expenses) — only for collaborated trips
-  const [groupPanelOpen, setGroupPanelOpen] = useState(false);
+  const [groupPanelOpen] = useState(false); // kept for vote badge compat; loading now driven by overviewOpen
   const [groupTab, setGroupTab] = useState<"votes" | "expenses">("votes");
   const [votes, setVotes] = useState<VoteSummary[]>([]);
   const [expenses, setExpenses] = useState<TripExpense[]>([]);
@@ -1088,10 +1088,11 @@ const TripBuilder = () => {
 
   // Load group tools data when panel is opened
   useEffect(() => {
-    if (!id || !groupPanelOpen || !user) return;
+    if (!id || !overviewOpen || !user) return;
+    if (collaborators.filter(c => c.status === "accepted").length === 0) return;
     getVotesForTrip(id).then(setVotes).catch(() => {});
     getExpensesForTrip(id).then(setExpenses).catch(() => {});
-  }, [id, groupPanelOpen, user]);
+  }, [id, overviewOpen, user, collaborators]);
 
   // Real-time sync — two separate channels to prevent broadcast/postgres_changes conflicts
   useEffect(() => {
@@ -1824,6 +1825,37 @@ const TripBuilder = () => {
     ),
   [trip.days]);
 
+  // Separated flight/hotel activities + cost breakdown for the rich overview
+  const flightActivities = useMemo(() =>
+    trip.days.flatMap((day, di) =>
+      day.activities
+        .filter(a => (a.type === "flight" || (a.type === "transport" && a.subtype === "flight")) && !a.is_arrival)
+        .map(a => ({ ...a, dayLabel: day.date ? formatDate(day.date) : `Day ${di + 1}` }))
+    ),
+  [trip.days, formatDate]);
+
+  const hotelActivities = useMemo(() =>
+    trip.days.flatMap((day, di) =>
+      day.activities
+        .filter(a => a.type === "accommodation" && !a.is_checkout)
+        .map(a => ({ ...a, dayLabel: day.date ? formatDate(day.date) : `Day ${di + 1}` }))
+    ),
+  [trip.days, formatDate]);
+
+  const costByCategory = useMemo(() => {
+    const allActs = trip.days.flatMap(d => d.activities);
+    const isFlightAct = (a: BuilderActivity) => a.type === "flight" || (a.type === "transport" && a.subtype === "flight");
+    const sum = (acts: BuilderActivity[]) => acts.reduce((s, a) => s + (a.cost || 0), 0);
+    return {
+      flights:    sum(allActs.filter(isFlightAct)),
+      hotels:     sum(allActs.filter(a => a.type === "accommodation")),
+      dining:     sum(allActs.filter(a => ["food", "dining", "cafe"].includes(a.type))),
+      transport:  sum(allActs.filter(a => a.type === "transport" && a.subtype !== "flight")),
+      activities: sum(allActs.filter(a => ["experience", "activity", "sightseeing", "shopping"].includes(a.type))),
+      other:      sum(allActs.filter(a => !isFlightAct(a) && !["accommodation","food","dining","cafe","transport","experience","activity","sightseeing","shopping"].includes(a.type))),
+    };
+  }, [trip.days]);
+
   // All activity image URLs available for thumbnail selection
   const activityImages = useMemo(() =>
     [...new Set(
@@ -2139,32 +2171,264 @@ const TripBuilder = () => {
           </div>
         </section>
 
-        {/* Trip overview — collapsible strip below hero */}
-        {keyActivities.length > 0 && (
+        {/* ── Trip Summary — rich overview panel below hero ── */}
+        {(flightActivities.length > 0 || hotelActivities.length > 0 || totalCost > 0 || (id && user && collaborators.filter(c => c.status === "accepted").length > 0)) && (
           <div className="bg-card border-b border-border print:hidden">
             <div className="container mx-auto px-4">
               <div className="max-w-6xl mx-auto">
                 <button
                   onClick={() => setOverviewOpen(v => !v)}
-                  className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors py-2.5 w-full text-left"
+                  className="flex items-center justify-between py-3 w-full text-left"
                 >
-                  <ChevronDown className={cn("w-3.5 h-3.5 transition-transform shrink-0", overviewOpen && "rotate-180")} />
-                  {overviewOpen ? "Hide trip overview" : "Show trip overview"}
-                  <span className="ml-1 text-muted-foreground/60">({keyActivities.length} key activities)</span>
+                  <span className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                    <Plane className="w-4 h-4 text-primary" />
+                    Trip Summary
+                  </span>
+                  <ChevronDown className={cn("w-4 h-4 text-muted-foreground transition-transform", overviewOpen && "rotate-180")} />
                 </button>
+
                 {overviewOpen && (
-                  <div className="pb-3 grid sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
-                    {keyActivities.map((a) => (
-                      <div key={a.id} className="flex items-center gap-2.5 text-sm bg-muted/50 rounded-lg px-3 py-2">
-                        {a.type === "flight"
-                          ? <Plane className="w-3.5 h-3.5 text-sky-500 shrink-0" />
-                          : <Hotel className="w-3.5 h-3.5 text-blue-500 shrink-0" />
-                        }
-                        <span className="text-muted-foreground text-xs shrink-0 w-14">{a.dayLabel}</span>
-                        <span className="text-muted-foreground text-xs shrink-0 w-10">{a.time}</span>
-                        <span className="text-foreground font-medium truncate text-xs">{a.name}</span>
+                  <div className="pb-5 space-y-5">
+
+                    {/* Row 1: Flights · Hotels · Cost Breakdown */}
+                    {(flightActivities.length > 0 || hotelActivities.length > 0 || totalCost > 0) && (
+                      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+
+                        {/* Flights */}
+                        {flightActivities.length > 0 && (
+                          <div className="space-y-2">
+                            <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                              <Plane className="w-3.5 h-3.5 text-sky-500" /> Flights
+                            </h4>
+                            {flightActivities.map((a) => (
+                              <div key={a.id} className="flex items-start gap-2.5 p-2.5 rounded-lg bg-sky-50/60 dark:bg-sky-950/30 border border-sky-100 dark:border-sky-900/50">
+                                <Plane className="w-3.5 h-3.5 text-sky-500 shrink-0 mt-0.5" />
+                                <div className="min-w-0 flex-1 text-xs">
+                                  <p className="font-semibold text-foreground truncate">{a.name}</p>
+                                  {(a.airline || a.flight_number) && (
+                                    <p className="text-muted-foreground">{[a.airline, a.flight_number].filter(Boolean).join(" · ")}</p>
+                                  )}
+                                  <p className="text-muted-foreground">{a.dayLabel}{a.time ? ` · ${a.time}` : ""}</p>
+                                </div>
+                                {a.cost > 0 && <span className="text-xs font-bold text-sky-600 dark:text-sky-400 shrink-0">{currencySymbol}{a.cost.toLocaleString()}</span>}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Hotels */}
+                        {hotelActivities.length > 0 && (
+                          <div className="space-y-2">
+                            <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                              <Hotel className="w-3.5 h-3.5 text-amber-500" /> Hotels
+                            </h4>
+                            {hotelActivities.map((a) => (
+                              <div key={a.id} className="flex items-start gap-2.5 p-2.5 rounded-lg bg-amber-50/60 dark:bg-amber-950/30 border border-amber-100 dark:border-amber-900/50">
+                                <Hotel className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" />
+                                <div className="min-w-0 flex-1 text-xs">
+                                  <p className="font-semibold text-foreground truncate">{a.name}</p>
+                                  {(a.nights || a.stars) && (
+                                    <p className="text-muted-foreground">
+                                      {a.nights ? `${a.nights} night${a.nights !== 1 ? "s" : ""}` : ""}
+                                      {a.nights && a.stars ? " · " : ""}
+                                      {a.stars ? "★".repeat(Math.min(a.stars, 5)) : ""}
+                                    </p>
+                                  )}
+                                  <p className="text-muted-foreground">{a.dayLabel}</p>
+                                </div>
+                                {a.cost > 0 && <span className="text-xs font-bold text-amber-600 dark:text-amber-400 shrink-0">{currencySymbol}{a.cost.toLocaleString()}</span>}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Cost Breakdown */}
+                        {totalCost > 0 && (
+                          <div className="space-y-2">
+                            <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                              <DollarSign className="w-3.5 h-3.5 text-emerald-500" /> Cost Breakdown
+                            </h4>
+                            <div className="p-3 rounded-lg border border-border bg-muted/30 space-y-2">
+                              {[
+                                { label: "Flights",    icon: Plane,    color: "text-sky-500",            amount: costByCategory.flights },
+                                { label: "Hotels",     icon: Hotel,    color: "text-amber-500",          amount: costByCategory.hotels },
+                                { label: "Dining",     icon: Utensils, color: "text-orange-500",         amount: costByCategory.dining },
+                                { label: "Transport",  icon: Bus,      color: "text-violet-500",         amount: costByCategory.transport },
+                                { label: "Activities", icon: Camera,   color: "text-emerald-500",        amount: costByCategory.activities },
+                                { label: "Other",      icon: Tag,      color: "text-muted-foreground",   amount: costByCategory.other },
+                              ].filter(c => c.amount > 0).map(({ label, icon: Icon, color, amount }) => (
+                                <div key={label} className="flex items-center justify-between gap-2 text-xs">
+                                  <span className="flex items-center gap-1.5 text-muted-foreground">
+                                    <Icon className={cn("w-3 h-3", color)} />{label}
+                                  </span>
+                                  <span className="font-semibold text-foreground">{currencySymbol}{amount.toLocaleString()}</span>
+                                </div>
+                              ))}
+                              <div className="pt-1.5 border-t border-border flex items-center justify-between text-sm font-bold text-foreground">
+                                <span>Total</span>
+                                <span>{currencySymbol}{totalCost.toLocaleString()}</span>
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
-                    ))}
+                    )}
+
+                    {/* Row 2: Group section — collaborative trips only */}
+                    {id && user && collaborators.filter(c => c.status === "accepted").length > 0 && (
+                      <div className="space-y-3 border-t border-border pt-4">
+                        <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                          <Users className="w-3.5 h-3.5 text-primary" /> Group
+                        </h4>
+
+                        {/* Member balance cards */}
+                        {memberIds.length > 0 && (() => {
+                          const nets = expenses.length > 0 && memberIds.length > 1 ? calcBalances(expenses, memberIds) : {};
+                          const profileMap: Record<string, { name: string; avatar?: string }> = {};
+                          if (user) profileMap[user.id] = { name: user.user_metadata?.display_name ?? "You", avatar: user.user_metadata?.avatar_url };
+                          collaborators.forEach(c => {
+                            const uid = c.user_id ?? c.id;
+                            profileMap[uid] = { name: c.profile.display_name ?? c.profile.handle ?? "Member", avatar: c.profile.avatar_url };
+                          });
+                          return (
+                            <div className="flex flex-wrap gap-2">
+                              {memberIds.map(uid => {
+                                const prof = profileMap[uid] ?? { name: "Member" };
+                                const net = nets[uid] ?? 0;
+                                return (
+                                  <div key={uid} className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-card border border-border min-w-[120px]">
+                                    {prof.avatar
+                                      ? <img src={prof.avatar} alt="" className="w-7 h-7 rounded-full object-cover shrink-0" />
+                                      : <div className="w-7 h-7 rounded-full bg-primary/20 text-primary flex items-center justify-center text-xs font-bold shrink-0">{prof.name.slice(0, 1).toUpperCase()}</div>
+                                    }
+                                    <div>
+                                      <p className="text-xs font-medium text-foreground">{uid === user.id ? "You" : prof.name}</p>
+                                      {expenses.length > 0 && (
+                                        <p className={cn("text-xs font-semibold", net > 0 ? "text-emerald-600" : net < 0 ? "text-red-500" : "text-muted-foreground")}>
+                                          {Math.abs(net) < 0.01 ? "Settled" : `${net > 0 ? "+" : ""}${currencySymbol}${Math.abs(net).toFixed(2)}`}
+                                        </p>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          );
+                        })()}
+
+                        {/* Votes + Expenses tabs */}
+                        <div className="rounded-xl border border-border overflow-hidden">
+                          <div className="flex border-b border-border">
+                            {(["votes", "expenses"] as const).map(tab => (
+                              <button
+                                key={tab}
+                                onClick={() => setGroupTab(tab)}
+                                className={cn(
+                                  "flex items-center gap-1.5 px-5 py-2.5 text-sm font-medium border-b-2 transition-colors capitalize",
+                                  groupTab === tab ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"
+                                )}
+                              >
+                                {tab === "votes" ? <ThumbsUp className="w-3.5 h-3.5" /> : <Receipt className="w-3.5 h-3.5" />}
+                                {tab}
+                              </button>
+                            ))}
+                          </div>
+
+                          {/* ── Votes tab ── */}
+                          {groupTab === "votes" && (
+                            <div className="p-4 space-y-2">
+                              <p className="text-xs text-muted-foreground mb-3">Vote on activities to help the group decide what to keep.</p>
+                              {trip.days.flatMap(d => d.activities).length === 0 ? (
+                                <p className="text-sm text-muted-foreground text-center py-4">No activities yet.</p>
+                              ) : (
+                                trip.days.flatMap((d, di) => d.activities.map((a) => {
+                                  const v = votes.find(x => x.activity_id === a.id);
+                                  return (
+                                    <div key={a.id} className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-muted/40 hover:bg-muted/70 transition-colors">
+                                      <div className="flex items-center gap-2 min-w-0">
+                                        <span className="text-xs text-muted-foreground shrink-0">D{di + 1}</span>
+                                        <span className="text-sm font-medium truncate">{a.name || "Untitled"}</span>
+                                        {a.location && <span className="text-xs text-muted-foreground truncate hidden sm:block">· {a.location}</span>}
+                                      </div>
+                                      <div className="flex items-center gap-1.5 shrink-0">
+                                        <button
+                                          onClick={() => handleVote(a.id, 1)}
+                                          className={cn("flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition-all border", v?.myVote === 1 ? "bg-emerald-100 dark:bg-emerald-900 border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300" : "border-border bg-background text-muted-foreground hover:text-emerald-600")}
+                                        >
+                                          <ThumbsUp className="w-3 h-3" />{v?.up ?? 0}
+                                        </button>
+                                        <button
+                                          onClick={() => handleVote(a.id, -1)}
+                                          className={cn("flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition-all border", v?.myVote === -1 ? "bg-red-100 dark:bg-red-900 border-red-300 dark:border-red-700 text-red-700 dark:text-red-300" : "border-border bg-background text-muted-foreground hover:text-red-500")}
+                                        >
+                                          <ThumbsDown className="w-3 h-3" />{v?.down ?? 0}
+                                        </button>
+                                      </div>
+                                    </div>
+                                  );
+                                }))
+                              )}
+                            </div>
+                          )}
+
+                          {/* ── Expenses tab ── */}
+                          {groupTab === "expenses" && (
+                            <div className="p-4 space-y-4">
+                              <div className="flex gap-2 items-end">
+                                <div className="flex-1 space-y-1">
+                                  <label className="text-xs text-muted-foreground">Description</label>
+                                  <input
+                                    value={expenseDesc}
+                                    onChange={e => setExpenseDesc(e.target.value)}
+                                    placeholder="e.g. Dinner at La Piazza"
+                                    className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                                  />
+                                </div>
+                                <div className="w-28 space-y-1">
+                                  <label className="text-xs text-muted-foreground">Amount ({currencySymbol})</label>
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    value={expenseAmount}
+                                    onChange={e => setExpenseAmount(e.target.value)}
+                                    placeholder="0"
+                                    className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                                  />
+                                </div>
+                                <Button size="sm" disabled={addingExpense || !expenseDesc.trim() || !expenseAmount} onClick={handleAddExpense} className="shrink-0">
+                                  {addingExpense ? <span className="w-3.5 h-3.5 border border-current border-t-transparent rounded-full animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+                                </Button>
+                              </div>
+                              {expenses.length === 0 ? (
+                                <p className="text-sm text-muted-foreground text-center py-4">No expenses logged yet.</p>
+                              ) : (
+                                <div className="space-y-1.5">
+                                  {expenses.map(exp => (
+                                    <div key={exp.id} className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-muted/40 text-sm">
+                                      <div className="flex items-center gap-2 min-w-0">
+                                        <DollarSign className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                                        <span className="truncate font-medium">{exp.description}</span>
+                                        <span className="text-muted-foreground text-xs shrink-0">
+                                          by {exp.paid_by_profile?.display_name ?? exp.paid_by_profile?.handle ?? "someone"}
+                                        </span>
+                                      </div>
+                                      <div className="flex items-center gap-2 shrink-0">
+                                        <span className="font-bold text-foreground">{currencySymbol}{Number(exp.amount).toLocaleString()}</span>
+                                        {exp.paid_by === user.id && (
+                                          <button onClick={() => handleDeleteExpense(exp.id)} className="text-muted-foreground hover:text-destructive transition-colors">
+                                            <Trash2 className="w-3.5 h-3.5" />
+                                          </button>
+                                        )}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -2454,8 +2718,8 @@ const TripBuilder = () => {
                             />
                           ) : (
                             <div className="relative">
-                            {/* Vote badge — shown when group panel is open and activity has votes */}
-                            {groupPanelOpen && !isAdd && (votes.find(x => x.activity_id === activity!.id)?.up ?? 0) + (votes.find(x => x.activity_id === activity!.id)?.down ?? 0) > 0 && (
+                            {/* Vote badge — shown when overview is open and activity has votes */}
+                            {overviewOpen && !isAdd && (votes.find(x => x.activity_id === activity!.id)?.up ?? 0) + (votes.find(x => x.activity_id === activity!.id)?.down ?? 0) > 0 && (
                               <div className="absolute bottom-1 left-1 z-20 flex items-center gap-1 bg-background/90 backdrop-blur-sm rounded-full px-1.5 py-0.5 border border-border text-[10px] font-semibold pointer-events-none">
                                 {(votes.find(x => x.activity_id === activity!.id)?.up ?? 0) > 0 && <span className="text-emerald-600 flex items-center gap-0.5"><ThumbsUp className="w-2.5 h-2.5" />{votes.find(x => x.activity_id === activity!.id)?.up}</span>}
                                 {(votes.find(x => x.activity_id === activity!.id)?.down ?? 0) > 0 && <span className="text-red-500 flex items-center gap-0.5"><ThumbsDown className="w-2.5 h-2.5" />{votes.find(x => x.activity_id === activity!.id)?.down}</span>}
@@ -2535,162 +2799,6 @@ const TripBuilder = () => {
                 </Button>
               </div>
 
-              {/* ── Group Tools — only shown for collaborated trips ── */}
-              {id && user && collaborators.filter(c => c.status === "accepted").length > 0 && (
-                <div className="mt-8 print:hidden border border-border rounded-xl overflow-hidden">
-                  <button
-                    onClick={() => setGroupPanelOpen(v => !v)}
-                    className="w-full flex items-center justify-between px-5 py-3.5 bg-card hover:bg-muted/50 transition-colors text-sm font-semibold text-foreground"
-                  >
-                    <span className="flex items-center gap-2">
-                      <Users className="w-4 h-4 text-primary" />
-                      Group Tools
-                      <span className="text-xs font-normal text-muted-foreground">· votes &amp; expenses</span>
-                    </span>
-                    <ChevronRight className={cn("w-4 h-4 text-muted-foreground transition-transform", groupPanelOpen && "rotate-90")} />
-                  </button>
-
-                  {groupPanelOpen && (
-                    <div className="border-t border-border bg-card">
-                      {/* Tab bar */}
-                      <div className="flex border-b border-border">
-                        {(["votes", "expenses"] as const).map(tab => (
-                          <button
-                            key={tab}
-                            onClick={() => setGroupTab(tab)}
-                            className={cn(
-                              "flex items-center gap-1.5 px-5 py-2.5 text-sm font-medium border-b-2 transition-colors capitalize",
-                              groupTab === tab ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"
-                            )}
-                          >
-                            {tab === "votes" ? <ThumbsUp className="w-3.5 h-3.5" /> : <Receipt className="w-3.5 h-3.5" />}
-                            {tab}
-                          </button>
-                        ))}
-                      </div>
-
-                      {/* ── Votes tab ── */}
-                      {groupTab === "votes" && (
-                        <div className="p-4 space-y-2">
-                          <p className="text-xs text-muted-foreground mb-3">Vote on activities to help the group decide what to keep.</p>
-                          {trip.days.flatMap(d => d.activities).length === 0 ? (
-                            <p className="text-sm text-muted-foreground text-center py-4">No activities yet.</p>
-                          ) : (
-                            trip.days.flatMap((d, di) => d.activities.map((a, ai) => {
-                              const v = votes.find(x => x.activity_id === a.id);
-                              return (
-                                <div key={a.id} className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-muted/40 hover:bg-muted/70 transition-colors">
-                                  <div className="flex items-center gap-2 min-w-0">
-                                    <span className="text-xs text-muted-foreground shrink-0">D{di + 1}</span>
-                                    <span className="text-sm font-medium truncate">{a.name || "Untitled"}</span>
-                                    {a.location && <span className="text-xs text-muted-foreground truncate hidden sm:block">· {a.location}</span>}
-                                  </div>
-                                  <div className="flex items-center gap-1.5 shrink-0">
-                                    <button
-                                      onClick={() => handleVote(a.id, 1)}
-                                      className={cn("flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition-all border", v?.myVote === 1 ? "bg-emerald-100 dark:bg-emerald-900 border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300" : "border-border bg-background text-muted-foreground hover:text-emerald-600")}
-                                    >
-                                      <ThumbsUp className="w-3 h-3" />{v?.up ?? 0}
-                                    </button>
-                                    <button
-                                      onClick={() => handleVote(a.id, -1)}
-                                      className={cn("flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition-all border", v?.myVote === -1 ? "bg-red-100 dark:bg-red-900 border-red-300 dark:border-red-700 text-red-700 dark:text-red-300" : "border-border bg-background text-muted-foreground hover:text-red-500")}
-                                    >
-                                      <ThumbsDown className="w-3 h-3" />{v?.down ?? 0}
-                                    </button>
-                                  </div>
-                                </div>
-                              );
-                            }))
-                          )}
-                        </div>
-                      )}
-
-                      {/* ── Expenses tab ── */}
-                      {groupTab === "expenses" && (
-                        <div className="p-4 space-y-4">
-                          {/* Add expense form */}
-                          <div className="flex gap-2 items-end">
-                            <div className="flex-1 space-y-1">
-                              <label className="text-xs text-muted-foreground">Description</label>
-                              <input
-                                value={expenseDesc}
-                                onChange={e => setExpenseDesc(e.target.value)}
-                                placeholder="e.g. Dinner at La Piazza"
-                                className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                              />
-                            </div>
-                            <div className="w-28 space-y-1">
-                              <label className="text-xs text-muted-foreground">Amount ({currencySymbol})</label>
-                              <input
-                                type="number"
-                                min={0}
-                                value={expenseAmount}
-                                onChange={e => setExpenseAmount(e.target.value)}
-                                placeholder="0"
-                                className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                              />
-                            </div>
-                            <Button size="sm" disabled={addingExpense || !expenseDesc.trim() || !expenseAmount} onClick={handleAddExpense} className="shrink-0">
-                              {addingExpense ? <span className="w-3.5 h-3.5 border border-current border-t-transparent rounded-full animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
-                            </Button>
-                          </div>
-
-                          {/* Expense list */}
-                          {expenses.length === 0 ? (
-                            <p className="text-sm text-muted-foreground text-center py-4">No expenses logged yet.</p>
-                          ) : (
-                            <div className="space-y-1.5">
-                              {expenses.map(exp => (
-                                <div key={exp.id} className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-muted/40 text-sm">
-                                  <div className="flex items-center gap-2 min-w-0">
-                                    <DollarSign className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                                    <span className="truncate font-medium">{exp.description}</span>
-                                    <span className="text-muted-foreground text-xs shrink-0">
-                                      by {exp.paid_by_profile?.display_name ?? exp.paid_by_profile?.handle ?? "someone"}
-                                    </span>
-                                  </div>
-                                  <div className="flex items-center gap-2 shrink-0">
-                                    <span className="font-bold text-foreground">{currencySymbol}{Number(exp.amount).toLocaleString()}</span>
-                                    {exp.paid_by === user.id && (
-                                      <button onClick={() => handleDeleteExpense(exp.id)} className="text-muted-foreground hover:text-destructive transition-colors">
-                                        <Trash2 className="w-3.5 h-3.5" />
-                                      </button>
-                                    )}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-
-                          {/* Balances */}
-                          {expenses.length > 0 && memberIds.length > 1 && (() => {
-                            const nets = calcBalances(expenses, memberIds);
-                            const memberProfiles: Record<string, string> = {};
-                            collaborators.forEach(c => { memberProfiles[c.user_id ?? c.id] = c.profile.display_name ?? c.profile.handle ?? "Collaborator"; });
-                            if (user) memberProfiles[user.id] = user.user_metadata?.display_name ?? "You";
-                            return (
-                              <div className="border-t border-border pt-3 space-y-1">
-                                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Balances</p>
-                                {Object.entries(nets).map(([uid, net]) => (
-                                  Math.abs(net) < 0.01 ? null : (
-                                    <div key={uid} className="flex items-center justify-between text-sm">
-                                      <span className="text-foreground">{uid === user?.id ? "You" : (memberProfiles[uid] ?? "Member")}</span>
-                                      <span className={cn("font-semibold", net > 0 ? "text-emerald-600" : "text-red-500")}>
-                                        {net > 0 ? "+" : ""}{currencySymbol}{Math.abs(net).toFixed(2)}
-                                      </span>
-                                    </div>
-                                  )
-                                ))}
-                              </div>
-                            );
-                          })()}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
 
               {/* ── Print-only itinerary view ── */}
               <div className="hidden print:block space-y-8">
