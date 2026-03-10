@@ -2077,12 +2077,22 @@ const TripBuilder = () => {
     const allActs = trip.days.flatMap(d => d.activities);
     const results: { path: string; color: string }[] = [];
 
+    const isFlightType = (a: BuilderActivity) =>
+      (a.type === "transport" && a.subtype === "flight") || a.type === "flight";
+
     allActs.forEach(act => {
-      if (act.type !== "accommodation" || act.is_checkout) return;
+      // Handle hotel check-in → checkout AND flight departure → arrival
+      const isHotelCheckin = act.type === "accommodation" && !act.is_checkout;
+      const isFlightDep    = isFlightType(act) && !act.is_arrival;
+      if (!isHotelCheckin && !isFlightDep) return;
+
       const colorKey = bondColorMap[act.id];
       if (!colorKey) return;
-      const checkout = allActs.find(x => x.is_checkout && x.hotel_bond_id === act.id);
-      if (!checkout) return;
+
+      const partner = isHotelCheckin
+        ? allActs.find(x => x.is_checkout && x.hotel_bond_id === act.id)
+        : allActs.find(x => x.is_arrival  && x.flight_bond_id === act.id);
+      if (!partner) return;
 
       let checkInRowIdx = -1, checkInSlotIdx = -1;
       let checkOutRowIdx = -1, checkOutSlotIdx = -1;
@@ -2090,7 +2100,7 @@ const TripBuilder = () => {
         row.slots.forEach((slot, si) => {
           if (slot === "add") return;
           if ((slot as BuilderActivity).id === act.id)      { checkInRowIdx = ri;  checkInSlotIdx = si; }
-          if ((slot as BuilderActivity).id === checkout.id) { checkOutRowIdx = ri; checkOutSlotIdx = si; }
+          if ((slot as BuilderActivity).id === partner.id)  { checkOutRowIdx = ri; checkOutSlotIdx = si; }
         });
       });
       if (checkInRowIdx === -1 || checkOutRowIdx === -1) return;
@@ -2751,17 +2761,10 @@ const TripBuilder = () => {
               <div className="relative print:hidden" style={{ height: svgHeight }}>
                 {/* SVG Snake Path */}
                 <svg className="absolute inset-0 pointer-events-none" width={containerWidth} height={svgHeight} style={{ overflow: "visible" }}>
-                  <defs>
-                    <linearGradient id="builderSnakeGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                      <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity="0.3" />
-                      <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity="0.1" />
-                    </linearGradient>
-                  </defs>
-                  <path d={snakePath} fill="none" stroke="url(#builderSnakeGradient)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d={snakePath} fill="none" stroke="hsl(var(--border))" strokeWidth="2.5" strokeOpacity="0.45" strokeLinecap="round" strokeLinejoin="round" />
                   {hotelStayPaths.map(({ path, color }, i) => (
-                    <path key={i} d={path} fill="none" stroke={color} strokeWidth="4" strokeOpacity="0.55" strokeLinecap="round" strokeLinejoin="round" />
+                    <path key={i} d={path} fill="none" stroke={color} strokeWidth="3.5" strokeOpacity="0.6" strokeLinecap="round" strokeLinejoin="round" />
                   ))}
-                  <path d={snakePath} fill="none" stroke="hsl(var(--border))" strokeWidth="2" strokeDasharray="8 6" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
 
                 {/* Day badges on connector lines */}
