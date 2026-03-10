@@ -132,6 +132,17 @@ const HOTEL_AMENITIES = [
   { value: "kitchen",        label: "Kitchen"         },
 ] as const;
 
+const BOND_COLORS = ['sky', 'emerald', 'amber', 'rose', 'violet', 'orange', 'teal'] as const;
+type BondColor = typeof BOND_COLORS[number];
+const BOND_STYLE: Record<BondColor, { left: string; right: string }> = {
+  sky:     { left: "border-l-4 border-l-sky-400",     right: "border-r-4 border-r-sky-400"     },
+  emerald: { left: "border-l-4 border-l-emerald-400", right: "border-r-4 border-r-emerald-400" },
+  amber:   { left: "border-l-4 border-l-amber-400",   right: "border-r-4 border-r-amber-400"   },
+  rose:    { left: "border-l-4 border-l-rose-400",    right: "border-r-4 border-r-rose-400"    },
+  violet:  { left: "border-l-4 border-l-violet-400",  right: "border-r-4 border-r-violet-400"  },
+  orange:  { left: "border-l-4 border-l-orange-400",  right: "border-r-4 border-r-orange-400"  },
+  teal:    { left: "border-l-4 border-l-teal-400",    right: "border-r-4 border-r-teal-400"    },
+};
 
 const placeholderImages: Record<string, string> = {
   // ── Transport subtypes ──
@@ -282,12 +293,15 @@ const BuilderSlot = ({
   isDragging?: boolean;
   isDragOver?: boolean;
   dropPosition?: 'before' | 'after';
+  bondColor?: string;
 }) => {
   const config = getActivityConfig(activity);
   const Icon = config.icon;
   const imageUrl = activity.image_url || getPlaceholderImage(activity);
   const isHotelCheckout = activity.type === "accommodation" && activity.is_checkout;
   const isFlightArrival = (activity.type === "transport" || activity.type === "flight") && activity.is_arrival;
+  const bondStyle = bondColor ? BOND_STYLE[bondColor as BondColor] : null;
+  const isSecondCard = isFlightArrival || isHotelCheckout;
 
   return (
     <div className="relative" style={{ width: 200 }}>
@@ -306,10 +320,10 @@ const BuilderSlot = ({
           config.bgColor,
           isDraggable ? "cursor-grab active:cursor-grabbing" : "cursor-pointer",
           isDragging && "opacity-50",
-          // Hotel checkout: show colored left strip (bond indicator)
-          isHotelCheckout && "border-l-4 border-l-blue-400",
-          // Flight arrival: show colored left strip
-          isFlightArrival && "border-l-4 border-l-sky-400"
+          // Arrival / checkout cards: colored left strip
+          bondStyle && isSecondCard && bondStyle.left,
+          // Departure / check-in cards with a bonded partner: colored right strip
+          bondStyle && !isSecondCard && bondStyle.right,
         )}
         style={{ minHeight: 240 }}
         onClick={onEdit}
@@ -671,26 +685,37 @@ const ActivityDialog = ({
                 </div>
               )}
 
-              {/* Time + Duration */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Time</Label>
-                  <Input type="time" value={form.time} onChange={(e) => updateForm({ time: e.target.value })} />
-                </div>
-                {!isFlightActivity && !isHotelActivity && (
+              {/* Time + Duration — hidden for hotels (check-in time lives in Stay Details) */}
+              {!isHotelActivity && (
+                <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
-                    <Label className="text-xs">Duration</Label>
-                    <Input value={form.duration} onChange={(e) => updateForm({ duration: e.target.value })} placeholder="2h" />
+                    <Label className="text-xs">Time</Label>
+                    <Input type="time" value={form.time} onChange={(e) => updateForm({ time: e.target.value })} />
                   </div>
-                )}
-              </div>
+                  {!isFlightActivity && (
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Duration</Label>
+                      <Input value={form.duration} onChange={(e) => updateForm({ duration: e.target.value })} placeholder="2h" />
+                    </div>
+                  )}
+                </div>
+              )}
 
-              {/* Location */}
-              <div className="space-y-1.5">
-                <Label>{isFlightActivity ? "Departure Airport" : isNonFlightTransport ? "From" : "Location"}</Label>
-                <Input value={form.location} onChange={(e) => updateForm({ location: e.target.value })}
-                  placeholder={isFlightActivity ? "e.g. London Heathrow (LHR)" : isNonFlightTransport ? "e.g. Paris Gare du Nord" : "e.g. Champ de Mars, Paris"} />
-              </div>
+              {/* Location — hidden for flights (departure airport is inside Flight Details) */}
+              {!isFlightActivity && (
+                <div className="space-y-1.5">
+                  <Label>{isNonFlightTransport ? "From" : "Location"}</Label>
+                  <Input value={form.location} onChange={(e) => {
+                    const loc = e.target.value;
+                    const updates: Partial<BuilderActivity> = { location: loc };
+                    if (isHotelActivity && !form.is_checkout && (!form.name || /^Check-in:\s*/i.test(form.name))) {
+                      updates.name = loc ? `Check-in: ${loc}` : "";
+                    }
+                    updateForm(updates);
+                  }}
+                    placeholder={isNonFlightTransport ? "e.g. Paris Gare du Nord" : "e.g. Champ de Mars, Paris"} />
+                </div>
+              )}
 
               {/* To — non-flight transport only */}
               {isNonFlightTransport && (
@@ -708,6 +733,17 @@ const ActivityDialog = ({
                     <Plane className="w-3.5 h-3.5" /> Flight Details
                   </p>
                   <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Departure Airport</Label>
+                      <Input value={form.location} onChange={(e) => {
+                        const loc = e.target.value;
+                        const updates: Partial<BuilderActivity> = { location: loc, origin: loc };
+                        if (!form.is_arrival && (!form.name || /^Departing from /i.test(form.name))) {
+                          updates.name = loc ? `Departing from ${loc}` : "";
+                        }
+                        updateForm(updates);
+                      }} placeholder="e.g. London Heathrow (LHR)" />
+                    </div>
                     <div className="space-y-1.5">
                       <Label className="text-xs">Arrival Airport</Label>
                       <Input value={form.destination_airport || ""} onChange={(e) => updateForm({ destination_airport: e.target.value })} placeholder="e.g. Paris CDG" />
@@ -770,8 +806,8 @@ const ActivityDialog = ({
                       <Input type="number" min={1} max={5} value={form.stars ?? ""} onChange={(e) => updateForm({ stars: Number(e.target.value) || undefined })} placeholder="4" />
                     </div>
                     <div className="space-y-1.5">
-                      <Label className="text-xs">Check-in</Label>
-                      <Input type="time" value={form.checkin_time || ""} onChange={(e) => updateForm({ checkin_time: e.target.value })} />
+                      <Label className="text-xs">Check-in Time</Label>
+                      <Input type="time" value={form.checkin_time || ""} onChange={(e) => updateForm({ checkin_time: e.target.value, time: e.target.value })} />
                     </div>
                     <div className="space-y-1.5">
                       <Label className="text-xs">Check-out</Label>
@@ -1203,6 +1239,34 @@ const TripBuilder = () => {
     }, 1500);
   }, [trip]);
 
+  // Bond color map: assigns a consistent color per bonded pair (flight or hotel)
+  // Same airline = same color; different airlines / hotels = different colors
+  const bondColorMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    const airlineColors: Record<string, string> = {};
+    let idx = 0;
+    for (const day of trip.days) {
+      for (const act of day.activities) {
+        if (act.is_arrival && act.flight_bond_id && !map[act.flight_bond_id]) {
+          const airline = act.airline?.trim() ?? "";
+          if (airline && airlineColors[airline]) {
+            map[act.flight_bond_id] = airlineColors[airline];
+          } else {
+            const color = BOND_COLORS[idx % BOND_COLORS.length];
+            map[act.flight_bond_id] = color;
+            if (airline) airlineColors[airline] = color;
+            idx++;
+          }
+        }
+        if (act.is_checkout && act.hotel_bond_id && !map[act.hotel_bond_id]) {
+          map[act.hotel_bond_id] = BOND_COLORS[idx % BOND_COLORS.length];
+          idx++;
+        }
+      }
+    }
+    return map;
+  }, [trip.days]);
+
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingActivity, setEditingActivity] = useState<BuilderActivity>(createEmptyActivity());
   const [editingDayId, setEditingDayId] = useState<string>("");
@@ -1328,9 +1392,10 @@ const TripBuilder = () => {
         // Target day = check-in day index + nights; default checkout time 12:00
         const dayIdx = cleanDays.findIndex(d => d.id === editingDayId);
         const targetDayIdx = Math.min(dayIdx + a.nights, cleanDays.length - 1);
+        const hotelName = (a.name || "").replace(/^Check-in:\s*/i, "") || a.location || "Hotel";
         const checkout: BuilderActivity = {
           ...createEmptyActivity("accommodation"),
-          name: `Check-out: ${a.name || "Hotel"}`,
+          name: `Check-out: ${hotelName}`,
           location: a.location,
           time: a.checkout_time || "12:00",
           duration: "",
@@ -2365,6 +2430,11 @@ const TripBuilder = () => {
                               onDelete={() => deleteActivity(trip.days[row.dayIndex].id, globalActIndex)}
                               onCopy={() => copyActivity(trip.days[row.dayIndex].id, globalActIndex)}
                               currencySymbol={currencySymbol}
+                              bondColor={
+                                activity!.flight_bond_id ? bondColorMap[activity!.flight_bond_id]
+                                : activity!.hotel_bond_id ? bondColorMap[activity!.hotel_bond_id]
+                                : bondColorMap[activity!.id]
+                              }
                               isDraggable={isDraggable && filterTypes.length === 0}
                               isDragging={isDragging}
                               isDragOver={isDragOver}

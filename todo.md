@@ -14,7 +14,7 @@
 ## New Ideas
 
 ### TripBuilder
-- [ ] Tags on activities — tags exist on trips; per-activity tags would enable filtering the snake view
+- [ ] Overview, voting and expenses overhaul -- All should be on the same interaction bundle. The overview should look much nicer. Something very similar to what the PDF would do. Keep icons such as airplanes and hotels! Since they would also have the expenses
 
 ### Explore & Social
 - [ ] Copy single activity from someone else's trip into your own
