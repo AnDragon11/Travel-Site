@@ -2051,6 +2051,107 @@ const TripBuilder = () => {
     return parts.join(" ");
   }, [rowLayouts]);
 
+  // Colored path segments for active hotel stays (check-in → checkout)
+  const BOND_COLOR_HEX: Record<string, string> = {
+    sky:     '#38bdf8',
+    emerald: '#34d399',
+    amber:   '#fbbf24',
+    rose:    '#fb7185',
+    violet:  '#a78bfa',
+    orange:  '#fb923c',
+    teal:    '#2dd4bf',
+  };
+
+  const hotelStayPaths = useMemo(() => {
+    if (rowLayouts.length === 0) return [];
+    const R = ARC_RADIUS;
+    const leftEdge = PADDING;
+    const rightEdge = PADDING + availableWidth;
+    const step = SLOT_WIDTH + GAP;
+
+    const cardCenterX = (row: typeof rowLayouts[0], slotIdx: number) =>
+      row.isRTL
+        ? PADDING + availableWidth - slotIdx * step - SLOT_WIDTH / 2
+        : PADDING + slotIdx * step + SLOT_WIDTH / 2;
+
+    const allActs = trip.days.flatMap(d => d.activities);
+    const results: { path: string; color: string }[] = [];
+
+    allActs.forEach(act => {
+      if (act.type !== "accommodation" || act.is_checkout) return;
+      const colorKey = bondColorMap[act.id];
+      if (!colorKey) return;
+      const checkout = allActs.find(x => x.is_checkout && x.hotel_bond_id === act.id);
+      if (!checkout) return;
+
+      let checkInRowIdx = -1, checkInSlotIdx = -1;
+      let checkOutRowIdx = -1, checkOutSlotIdx = -1;
+      rowLayouts.forEach((row, ri) => {
+        row.slots.forEach((slot, si) => {
+          if (slot === "add") return;
+          if ((slot as BuilderActivity).id === act.id)      { checkInRowIdx = ri;  checkInSlotIdx = si; }
+          if ((slot as BuilderActivity).id === checkout.id) { checkOutRowIdx = ri; checkOutSlotIdx = si; }
+        });
+      });
+      if (checkInRowIdx === -1 || checkOutRowIdx === -1) return;
+
+      const rowA = rowLayouts[checkInRowIdx];
+      const rowB = rowLayouts[checkOutRowIdx];
+      const startX = cardCenterX(rowA, checkInSlotIdx);
+      const endX   = cardCenterX(rowB, checkOutSlotIdx);
+      const parts: string[] = [];
+
+      parts.push(`M ${startX} ${rowA.yCenter}`);
+
+      if (checkInRowIdx === checkOutRowIdx) {
+        parts.push(`L ${endX} ${rowA.yCenter}`);
+      } else {
+        parts.push(`L ${rowA.endEdgeX} ${rowA.yCenter}`);
+        for (let i = checkInRowIdx; i < checkOutRowIdx; i++) {
+          const row  = rowLayouts[i];
+          const next = rowLayouts[i + 1];
+          const gapY = (row.yCenter + next.yCenter) / 2;
+          if (!row.isRTL && next.isRTL) {
+            parts.push(`L ${rightEdge} ${row.yCenter}`);
+            parts.push(`A ${R} ${R} 0 0 1 ${rightEdge + R} ${row.yCenter + R}`);
+            parts.push(`L ${rightEdge + R} ${next.yCenter - R}`);
+            parts.push(`A ${R} ${R} 0 0 1 ${rightEdge} ${next.yCenter}`);
+          } else if (!row.isRTL && !next.isRTL) {
+            parts.push(`L ${rightEdge} ${row.yCenter}`);
+            parts.push(`A ${R} ${R} 0 0 1 ${rightEdge + R} ${row.yCenter + R}`);
+            parts.push(`L ${rightEdge + R} ${gapY - R}`);
+            parts.push(`A ${R} ${R} 0 0 1 ${rightEdge} ${gapY}`);
+            parts.push(`L ${leftEdge} ${gapY}`);
+            parts.push(`A ${R} ${R} 0 0 0 ${leftEdge - R} ${gapY + R}`);
+            parts.push(`L ${leftEdge - R} ${next.yCenter - R}`);
+            parts.push(`A ${R} ${R} 0 0 0 ${leftEdge} ${next.yCenter}`);
+          } else if (row.isRTL && !next.isRTL) {
+            parts.push(`L ${leftEdge} ${row.yCenter}`);
+            parts.push(`A ${R} ${R} 0 0 0 ${leftEdge - R} ${row.yCenter + R}`);
+            parts.push(`L ${leftEdge - R} ${next.yCenter - R}`);
+            parts.push(`A ${R} ${R} 0 0 0 ${leftEdge} ${next.yCenter}`);
+          } else {
+            parts.push(`L ${leftEdge} ${row.yCenter}`);
+            parts.push(`A ${R} ${R} 0 0 0 ${leftEdge - R} ${row.yCenter + R}`);
+            parts.push(`L ${leftEdge - R} ${gapY - R}`);
+            parts.push(`A ${R} ${R} 0 0 0 ${leftEdge} ${gapY}`);
+            parts.push(`L ${rightEdge} ${gapY}`);
+            parts.push(`A ${R} ${R} 0 0 1 ${rightEdge + R} ${gapY + R}`);
+            parts.push(`L ${rightEdge + R} ${next.yCenter - R}`);
+            parts.push(`A ${R} ${R} 0 0 1 ${rightEdge} ${next.yCenter}`);
+          }
+          // Traverse intermediate row fully
+          if (i + 1 < checkOutRowIdx) {
+            parts.push(`L ${rowLayouts[i + 1].endEdgeX} ${rowLayouts[i + 1].yCenter}`);
+          }
+        }
+        parts.push(`L ${endX} ${rowB.yCenter}`);
+      }
+      results.push({ path: parts.join(" "), color: BOND_COLOR_HEX[colorKey] ?? '#34d399' });
+    });
+    return results;
+  }, [rowLayouts, trip.days, bondColorMap, availableWidth]);
+
   // Day badge positions (between rows when day changes; Day 1 at top center)
   const dayBadgePositions = useMemo(() => {
     const positions: { x: number; y: number; day: BuilderDay }[] = [];
@@ -2657,6 +2758,9 @@ const TripBuilder = () => {
                     </linearGradient>
                   </defs>
                   <path d={snakePath} fill="none" stroke="url(#builderSnakeGradient)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+                  {hotelStayPaths.map(({ path, color }, i) => (
+                    <path key={i} d={path} fill="none" stroke={color} strokeWidth="4" strokeOpacity="0.55" strokeLinecap="round" strokeLinejoin="round" />
+                  ))}
                   <path d={snakePath} fill="none" stroke="hsl(var(--border))" strokeWidth="2" strokeDasharray="8 6" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
 
