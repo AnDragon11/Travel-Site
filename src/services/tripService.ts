@@ -396,6 +396,13 @@ const submitViaSupabase = (formData: TripFormData, userId: string | null): Promi
         const requestId = data.id;
         console.log("Itinerary request created:", requestId, userId ? `(user: ${userId})` : "(guest)");
 
+        // Track guest request IDs so they can be claimed on sign-in
+        if (!userId) {
+          const key = "diarytrips_guest_requests";
+          const existing: string[] = JSON.parse(localStorage.getItem(key) ?? "[]");
+          localStorage.setItem(key, JSON.stringify([...existing, requestId]));
+        }
+
         // Invoke edge function to process the request (fire and forget — Realtime delivers the result)
         supabase.functions.invoke("generate-itinerary", {
           body: { requestId, formData },

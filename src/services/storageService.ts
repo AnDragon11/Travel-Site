@@ -212,13 +212,26 @@ export const loadPublicTripsForUser = async (userId: string): Promise<SavedTrip[
 // ─── Migration ───────────────────────────────────────────────────────
 
 export const migrateLocalToSupabase = async (): Promise<void> => {
-  const localTrips = loadLocalTrips();
-  if (localTrips.length === 0) return;
   const user = await getSessionUser();
   if (!user) return;
+
+  // Migrate trips
+  const localTrips = loadLocalTrips();
   for (const trip of localTrips) {
     try { await saveSupabaseTrip(trip, user.id); }
     catch (e) { console.error("Migration failed for trip", trip.id, e); }
   }
-  localStorage.removeItem(LOCAL_KEY);
+  if (localTrips.length > 0) localStorage.removeItem(LOCAL_KEY);
+
+  // Claim anonymous itinerary_request rows created during this guest session
+  const requestKey = "diarytrips_guest_requests";
+  const guestRequestIds: string[] = JSON.parse(localStorage.getItem(requestKey) ?? "[]");
+  if (guestRequestIds.length > 0) {
+    await supabase
+      .from("itinerary_requests")
+      .update({ user_id: user.id })
+      .in("id", guestRequestIds)
+      .is("user_id", null);
+    localStorage.removeItem(requestKey);
+  }
 };

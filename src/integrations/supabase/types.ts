@@ -464,8 +464,6 @@ export type Database = {
           is_favorite: boolean | null
           is_public: boolean
           photos: string[] | null
-          rating: number | null
-          review: string | null
           source: string
           tags: string[] | null
           thumbnail: string | null
@@ -484,8 +482,6 @@ export type Database = {
           is_favorite?: boolean | null
           is_public?: boolean
           photos?: string[] | null
-          rating?: number | null
-          review?: string | null
           source: string
           tags?: string[] | null
           thumbnail?: string | null
@@ -504,8 +500,6 @@ export type Database = {
           is_favorite?: boolean | null
           is_public?: boolean
           photos?: string[] | null
-          rating?: number | null
-          review?: string | null
           source?: string
           tags?: string[] | null
           thumbnail?: string | null
@@ -579,8 +573,6 @@ export type Database = {
           is_favorite: boolean | null
           is_public: boolean
           photos: string[] | null
-          rating: number | null
-          review: string | null
           source: string
           tags: string[] | null
           thumbnail: string | null
