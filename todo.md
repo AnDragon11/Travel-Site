@@ -5,7 +5,7 @@
 - **When a feature is NOT crossed out**, it means it is a good idea that would be executed in the future, it should not be considered for now
 - **When only bugs are fixed AND/OR 1-2 partially done features**, version is added by 0.0.1
 - **When 3+ partially done features AND/OR new features are added**, version is added by 0.1.0
-- **Always** leave the headings along with one "- [ ]" each under it, even if it is empty 
+- **Always** leave the headings along with one "- [ ] " each under it, even if it is empty 
 
 ---
 

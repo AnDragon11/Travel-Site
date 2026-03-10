@@ -367,7 +367,7 @@ const TripBuilder = () => {
 
   // Drag and drop state
   const [draggedItem, setDraggedItem] = useState<{ dayId: string; activityIndex: number } | null>(null);
-  const [dragOverItem, setDragOverItem] = useState<{ dayId: string; activityIndex: number; position: 'before' | 'after' } | null>(null);
+  const [dragOverItem, setDragOverItem] = useState<{ dayId: string; activityIndex: number; position: 'before' | 'after'; rowIsRTL?: boolean } | null>(null);
   const dragScrollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Activity type filter
@@ -1606,8 +1606,9 @@ const TripBuilder = () => {
                       );
 
                       const currentDayId = trip.days[row.dayIndex].id;
-                      const isDragging = draggedItem?.dayId === currentDayId && draggedItem?.activityIndex === globalActIndex;
-                      const isDragOver = !isAdd && dragOverItem?.dayId === currentDayId && dragOverItem?.activityIndex === globalActIndex;
+                      const isSelf = draggedItem?.dayId === currentDayId && draggedItem?.activityIndex === globalActIndex;
+                      const isDragging = isSelf;
+                      const isDragOver = !isAdd && !isSelf && dragOverItem?.dayId === currentDayId && dragOverItem?.activityIndex === globalActIndex;
                       const dropPosition = isDragOver ? dragOverItem?.position : undefined;
 
                       // For "Add Activity" slot
@@ -1635,26 +1636,29 @@ const TripBuilder = () => {
                       const showGhostBefore = isDragOver && (row.isRTL ? dropPosition === 'after' : dropPosition === 'before');
                       const showGhostAfter  = isDragOver && (row.isRTL ? dropPosition === 'before' : dropPosition === 'after');
 
-                      const gap = showTransport && (
-                        <div className="shrink-0" style={{ width: GAP }} />
-                      );
-                      const ghostGap = <div className="shrink-0" style={{ width: GAP }} />;
+                      // Gaps: ghost supplies its own surrounding gaps; suppress slot's gap on the ghost side to avoid doubling
+                      const ltrGap = !row.isRTL && showTransport && !showGhostBefore
+                        ? <div className="shrink-0" style={{ width: GAP }} /> : null;
+                      const rtlGap = row.isRTL && showTransport && !showGhostAfter
+                        ? <div className="shrink-0" style={{ width: GAP }} /> : null;
 
                       const slotKey = isAdd ? `add-${row.dayIndex}` : activity!.id;
                       return (
                         <Fragment key={slotKey}>
                         {showGhostBefore && (
                           <div className="flex items-center shrink-0">
-                            {ghostGap}<DragGhost />
+                            {slotIndex > 0 && <div className="shrink-0" style={{ width: GAP }} />}
+                            <DragGhost />
+                            <div className="shrink-0" style={{ width: GAP }} />
                           </div>
                         )}
                         <div
                           className={cn(
-                            "flex items-center transition-opacity duration-200",
+                            "flex items-center transition-all duration-150",
                             !isAdd && filterTypes.length > 0 && !filterTypes.includes(activity!.type) && !filterTypes.includes(activity!.subtype ?? "") && "opacity-20"
                           )}
                         >
-                          {!row.isRTL && gap}
+                          {ltrGap}
                           {isAdd ? (
                             <AddSlotCard
                               onClick={() => openAddActivity(trip.days[row.dayIndex].id)}
@@ -1718,6 +1722,9 @@ const TripBuilder = () => {
                               dropPosition={dropPosition}
                               onDragStart={(e) => {
                                 e.stopPropagation();
+                                // Show the full card as drag image (not just the browser's partial capture)
+                                const el = e.currentTarget as HTMLElement;
+                                e.dataTransfer.setDragImage(el, el.offsetWidth / 2, 30);
                                 setDraggedItem({ dayId: currentDayId, activityIndex: globalActIndex });
                               }}
                               onDragOver={(e) => {
@@ -1737,17 +1744,21 @@ const TripBuilder = () => {
                                 // Calculate drop position based on mouse X relative to slot center
                                 const rect = e.currentTarget.getBoundingClientRect();
                                 const position: 'before' | 'after' = e.clientX < rect.left + rect.width / 2 ? 'before' : 'after';
-                                setDragOverItem({ dayId: currentDayId, activityIndex: globalActIndex, position });
+                                setDragOverItem({ dayId: currentDayId, activityIndex: globalActIndex, position, rowIsRTL: row.isRTL });
                               }}
                               onDragEnd={() => {
                                 if (dragScrollRef.current) { clearInterval(dragScrollRef.current); dragScrollRef.current = null; }
                                 if (draggedItem && dragOverItem && dragOverItem.activityIndex !== -1) {
+                                  // Flip position for RTL rows: mouse 'before' (left half) = visual 'after' in sequence
+                                  const logicalPos = dragOverItem.rowIsRTL
+                                    ? (dragOverItem.position === 'before' ? 'after' : 'before')
+                                    : dragOverItem.position;
                                   reorderActivity(
                                     draggedItem.dayId,
                                     draggedItem.activityIndex,
                                     dragOverItem.dayId,
                                     dragOverItem.activityIndex,
-                                    dragOverItem.position
+                                    logicalPos
                                   );
                                 }
                                 setDraggedItem(null);
@@ -1760,11 +1771,13 @@ const TripBuilder = () => {
                             />
                             </div>
                           )}
-                          {row.isRTL && gap}
+                          {rtlGap}
                         </div>
                         {showGhostAfter && (
                           <div className="flex items-center shrink-0">
-                            {ghostGap}<DragGhost />
+                            <div className="shrink-0" style={{ width: GAP }} />
+                            <DragGhost />
+                            {slotIndex < row.slots.length - 1 && <div className="shrink-0" style={{ width: GAP }} />}
                           </div>
                         )}
                         </Fragment>

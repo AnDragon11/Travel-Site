@@ -255,7 +255,7 @@ export const AddSlotCard = ({
 // ─── Drag Ghost Placeholder ─────────────────────────────────────────
 export const DragGhost = () => (
   <div
-    className="rounded-xl border-2 border-dashed border-primary/50 bg-primary/5 w-[200px] shrink-0 flex items-center justify-center pointer-events-none"
+    className="rounded-xl border-2 border-dashed border-primary/50 bg-primary/5 w-[200px] shrink-0 flex items-center justify-center pointer-events-none animate-in fade-in zoom-in-95 duration-150"
     style={{ minHeight: 240 }}
   >
     <GripVertical className="w-6 h-6 text-primary/30" />
