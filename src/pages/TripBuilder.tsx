@@ -284,6 +284,7 @@ const BuilderSlot = ({
   isDragOver = false,
   dropPosition,
   bondColor,
+  isRTL = false,
 }: {
   activity: BuilderActivity;
   onEdit: () => void;
@@ -299,6 +300,7 @@ const BuilderSlot = ({
   isDragOver?: boolean;
   dropPosition?: 'before' | 'after';
   bondColor?: string;
+  isRTL?: boolean;
 }) => {
   const config = getActivityConfig(activity);
   const Icon = config.icon;
@@ -325,10 +327,9 @@ const BuilderSlot = ({
           config.bgColor,
           isDraggable ? "cursor-grab active:cursor-grabbing" : "cursor-pointer",
           isDragging && "opacity-50",
-          // Arrival / checkout cards: colored left strip
-          bondStyle && isSecondCard && bondStyle.left,
-          // Departure / check-in cards with a bonded partner: colored right strip
-          bondStyle && !isSecondCard && bondStyle.right,
+          // Bond strip: mirrored on RTL rows so the stripe always faces the partner card
+          bondStyle && isSecondCard && (isRTL ? bondStyle.right : bondStyle.left),
+          bondStyle && !isSecondCard && (isRTL ? bondStyle.left : bondStyle.right),
         )}
         style={{ minHeight: 240 }}
         onClick={onEdit}
@@ -2821,6 +2822,7 @@ const TripBuilder = () => {
                                 : activity!.hotel_bond_id ? bondColorMap[activity!.hotel_bond_id]
                                 : bondColorMap[activity!.id]
                               }
+                              isRTL={row.isRTL}
                               isDraggable={isDraggable && filterTypes.length === 0}
                               isDragging={isDragging}
                               isDragOver={isDragOver}
