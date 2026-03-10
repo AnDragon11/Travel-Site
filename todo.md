@@ -16,13 +16,9 @@
 ## Partially Done
 
 ### TripBuilder
-- [x] **Auto-sync flight arrival** — when editing a departure card, sync airline/flight number/class/luggage to its bonded arrival card live
-- [x] **Move bonded cards together** — when moving a hotel check-in or flight departure to a different day, prompt to also move the bonded checkout/arrival (or warn that the bond will break)
-- [x] **Auto-sort by time** — after editing or dropping an activity, re-sort activities within that day by their time field
 - [ ] **Per-day cost total** — show a running cost total beneath each day column (sum of all activity costs for that day)
 - [ ] **Time gap warnings** — highlight activities that overlap in time or leave no buffer between events
 - [ ] **Day duration bar** — visual indicator showing how many hours of the day are scheduled vs free
-- [x] **Activity tags on canvas** — small keyword chips on the activity card (e.g. "must-book", "optional") visible without opening the dialog
 
 ---
 
@@ -32,7 +28,6 @@
 
 ### Explore & Social
 - [ ] Copy single activity from someone else's trip into your own
-- [x] Feed filter — show only trips from people you follow
 - [ ] Algorithmic suggestions based on travel history
 - [ ] Trending destinations widget (aggregate most-planned destinations)
 - [ ] Comments on public trips

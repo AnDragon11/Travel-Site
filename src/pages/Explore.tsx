@@ -3,13 +3,14 @@ import { useNavigate, Link } from "react-router-dom";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
-import { MapPin, Heart, Compass, Filter, Search, X, AlertCircle, Loader2, Tag, ChevronDown } from "lucide-react";
+import { MapPin, Heart, Compass, Filter, Search, X, AlertCircle, Loader2, Tag, ChevronDown, Users } from "lucide-react";
 import { SavedTrip } from "@/lib/tripTypes";
 import { cn } from "@/lib/utils";
 import { loadTrips, saveTrip, deleteTrip } from "@/services/storageService";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { usePreferences } from "@/context/PreferencesContext";
+import { useAuth } from "@/context/AuthContext";
 
 
 type SortOption = 'recent' | 'popular' | 'budget-low' | 'budget-high';
@@ -108,6 +109,7 @@ const TripCard = ({
 
 const Explore = () => {
   const { currencySymbol } = usePreferences();
+  const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedDestination, setSelectedDestination] = useState<string | null>(null);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
@@ -118,9 +120,12 @@ const Explore = () => {
   const [sortBy, setSortBy] = useState<SortOption>('popular');
   const [showFilters, setShowFilters] = useState(false);
   const [showTagFilter, setShowTagFilter] = useState(false);
+  const [followingOnly, setFollowingOnly] = useState(false);
+  const [followedUserIds, setFollowedUserIds] = useState<Set<string>>(new Set());
   const [savedTrips, setSavedTrips] = useState<SavedTrip[]>([]);
   const [dbPublicTrips, setDbPublicTrips] = useState<SavedTrip[]>([]);
   const [tripAuthors, setTripAuthors] = useState<Record<string, { display_name: string | null; handle: string | null; avatar_url: string | null }>>({});
+  const [tripUserIds, setTripUserIds] = useState<Record<string, string>>({});
   const [loadingTrips, setLoadingTrips] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -140,9 +145,11 @@ const Explore = () => {
           return;
         }
         const authors: typeof tripAuthors = {};
+        const userIds: Record<string, string> = {};
         setDbPublicTrips(data.map(row => {
           const profile = row.profiles as { display_name: string | null; handle: string | null; avatar_url: string | null } | null;
           if (profile) authors[row.id] = profile;
+          if (row.user_id) userIds[row.id] = row.user_id;
           return {
             id: row.id,
             source: row.source as SavedTrip['source'],
@@ -161,12 +168,21 @@ const Explore = () => {
           };
         }));
         setTripAuthors(authors);
+        setTripUserIds(userIds);
       });
   };
 
   useEffect(() => {
     loadPublicTrips();
   }, []);
+
+  useEffect(() => {
+    if (!user) { setFollowedUserIds(new Set()); return; }
+    supabase.from("follows").select("following_id").eq("follower_id", user.id)
+      .then(({ data }) => {
+        setFollowedUserIds(new Set((data ?? []).map(r => r.following_id as string)));
+      });
+  }, [user]);
 
   // A trip is favorited if the user owns it and has isFavorite=true,
   // OR if the user has saved a private copy (matched by title+destination).
@@ -227,9 +243,10 @@ const Explore = () => {
     trip.days.reduce((t, d) => t + d.activities.reduce((s, a) => s + (a.cost || 0), 0), 0);
 
   const hasActiveFilters = !!(searchQuery || selectedDestination || selectedTags.length > 0 ||
-                           minBudget !== null || maxBudget !== null || minDays !== null || maxDays !== null);
+                           minBudget !== null || maxBudget !== null || minDays !== null || maxDays !== null || followingOnly);
 
   const filteredTrips = allTrips.filter(trip => {
+    if (followingOnly && !followedUserIds.has(tripUserIds[trip.id])) return false;
     if (searchQuery && !trip.title.toLowerCase().includes(searchQuery.toLowerCase()) &&
         !trip.destination.toLowerCase().includes(searchQuery.toLowerCase())) return false;
     if (selectedDestination && trip.destination !== selectedDestination) return false;
@@ -264,6 +281,7 @@ const Explore = () => {
     setMinDays(null);
     setMaxDays(null);
     setSortBy('popular');
+    setFollowingOnly(false);
   };
 
 
@@ -296,6 +314,18 @@ const Explore = () => {
               <option value="budget-low">Price ↑</option>
               <option value="budget-high">Price ↓</option>
             </select>
+            {user && (
+              <Button
+                variant={followingOnly ? "default" : "outline"}
+                size="sm"
+                onClick={() => setFollowingOnly(v => !v)}
+                className="shrink-0 gap-1.5"
+                title="Show only trips from people you follow"
+              >
+                <Users className="w-4 h-4" />
+                <span className="hidden sm:inline">Following</span>
+              </Button>
+            )}
             <Button
               variant={showFilters ? "default" : "outline"}
               size="sm"

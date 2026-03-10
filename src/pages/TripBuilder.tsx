@@ -208,6 +208,7 @@ export interface BuilderActivity {
   is_checkout?: boolean;
   flight_bond_id?: string;  // shared ID between departure and arrival activities
   is_arrival?: boolean;
+  tags?: string[];
 }
 
 export interface BuilderDay {
@@ -263,6 +264,9 @@ const createEmptyDay = (): BuilderDay => ({
   date: "",
   activities: [],
 });
+
+const sortByTime = (acts: BuilderActivity[]) =>
+  [...acts].sort((a, b) => (a.time || "99:99").localeCompare(b.time || "99:99"));
 
 // ─── Activity Slot ─────────────────────────────────────────────────
 const BuilderSlot = ({
@@ -433,6 +437,17 @@ const BuilderSlot = ({
           </div>
         </div>
 
+        {/* Tags */}
+        {activity.tags && activity.tags.length > 0 && (
+          <div className="flex flex-wrap gap-1 px-3 pb-2">
+            {activity.tags.map((tag, i) => (
+              <span key={i} className="px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground text-[10px] font-medium border border-border/50">
+                {tag}
+              </span>
+            ))}
+          </div>
+        )}
+
         {/* Booking link — integrated footer */}
         {activity.booking_url && (
           <>
@@ -516,11 +531,13 @@ const ActivityDialog = ({
   const originalRef = useRef<BuilderActivity>(activity);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isFetchingImage, setIsFetchingImage] = useState(false);
+  const [tagInput, setTagInput] = useState("");
 
   useEffect(() => {
     originalRef.current = activity;
     setForm(activity);
     setSelectedDayId(currentDayId);
+    setTagInput("");
   }, [activity, currentDayId]);
 
   const updateForm = (updates: Partial<BuilderActivity>) => {
@@ -575,6 +592,17 @@ const ActivityDialog = ({
     } catch { toast.error("Could not fetch image from link"); }
     finally { setIsFetchingImage(false); }
   };
+
+  const addTag = (raw: string) => {
+    const tag = raw.trim().toLowerCase().replace(/[^a-z0-9\-_]/g, "");
+    if (!tag) return;
+    const tags = form.tags ?? [];
+    if (tags.includes(tag)) { setTagInput(""); return; }
+    updateForm({ tags: [...tags, tag] });
+    setTagInput("");
+  };
+
+  const removeTag = (tag: string) => updateForm({ tags: (form.tags ?? []).filter(t => t !== tag) });
 
   const handleCommit = () => {
     const name = form.name.trim() || defaultActivityName(form.type, form.subtype);
@@ -874,6 +902,32 @@ const ActivityDialog = ({
                 </div>
               )}
 
+              {/* Tags */}
+              <div className="space-y-1.5">
+                <Label className="flex items-center gap-1.5">
+                  <Tag className="w-3.5 h-3.5 text-muted-foreground" /> Tags
+                </Label>
+                {(form.tags ?? []).length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {(form.tags ?? []).map((tag) => (
+                      <span key={tag} className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-muted text-muted-foreground text-xs border border-border/50">
+                        {tag}
+                        <button type="button" onClick={() => removeTag(tag)} className="hover:text-foreground">
+                          <XIcon className="w-3 h-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <Input
+                  value={tagInput}
+                  onChange={(e) => setTagInput(e.target.value.replace(/[^a-z0-9\-_]/gi, ""))}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === ",") { e.preventDefault(); addTag(tagInput); } }}
+                  placeholder="must-book, optional… (Enter to add)"
+                  className="h-8 text-sm"
+                />
+              </div>
+
               {/* Booking URL */}
               <div className="space-y-1.5">
                 <Label className="flex items-center gap-1.5">
@@ -942,7 +996,7 @@ const ActivityDialog = ({
         <DialogFooter className="px-5 py-3 border-t border-border shrink-0 bg-background">
           <Button variant="outline" onClick={handleCancel}>Cancel</Button>
           {isEditing ? (
-            <Button onClick={() => onOpenChange(false)}>Done</Button>
+            <Button onClick={handleCommit}>Done</Button>
           ) : (
             <Button onClick={handleCommit}><Save className="w-4 h-4 mr-1" />Add Activity</Button>
           )}
@@ -1326,16 +1380,27 @@ const TripBuilder = () => {
   };
 
   const handleSaveActivity = (a: BuilderActivity, targetDayId?: string) => {
-    // If moving to a different day, do a simple remove + append
+    // If moving to a different day, also move bonded card if present
     if (targetDayId && targetDayId !== editingDayId && editingIndex >= 0) {
+      const isFlightDep = ((a.type === "transport" && a.subtype === "flight") || a.type === "flight") && !a.is_arrival;
+      const isHotelCheckin = a.type === "accommodation" && !a.is_checkout;
+      const bonded = isFlightDep
+        ? trip.days.flatMap(d => d.activities).find(x => x.is_arrival && x.flight_bond_id === a.id)
+        : isHotelCheckin
+        ? trip.days.flatMap(d => d.activities).find(x => x.is_checkout && x.hotel_bond_id === a.id)
+        : undefined;
       setTrip((p) => ({
         ...p,
         days: p.days.map((d) => {
-          if (d.id === editingDayId) return { ...d, activities: d.activities.filter(x => x.id !== a.id) };
-          if (d.id === targetDayId) return { ...d, activities: [...d.activities, a] };
-          return d;
+          let acts = d.activities.filter(x => x.id !== a.id && !(bonded && x.id === bonded.id));
+          if (d.id === targetDayId) acts = [...acts, a, ...(bonded ? [bonded] : [])];
+          return { ...d, activities: sortByTime(acts) };
         }),
       }));
+      if (bonded) {
+        const label = isFlightDep ? "flight + arrival" : "check-in + check-out";
+        toast.success(`Moved ${label} to the new day`);
+      }
       return;
     }
 
@@ -1346,7 +1411,7 @@ const TripBuilder = () => {
         const acts = [...d.activities];
         if (editingIndex === -1) acts.push(a);
         else acts[editingIndex] = a;
-        return { ...d, activities: acts };
+        return { ...d, activities: sortByTime(acts) };
       });
 
       // 2. Auto-generate flight arrival when destination_airport is filled
@@ -1363,10 +1428,12 @@ const TripBuilder = () => {
           name: `Arrive at ${a.destination_airport}`,
           location: a.destination_airport,
           time: a.time, // user can adjust
-          duration: "",
+          duration: a.duration || "",
           airline: a.airline,
           flight_number: a.flight_number,
           flight_class: a.flight_class,
+          luggage_checkin: a.luggage_checkin,
+          luggage_cabin: a.luggage_cabin,
           flight_bond_id: a.id,
           is_arrival: true,
           image_url: a.image_url,
@@ -1376,7 +1443,7 @@ const TripBuilder = () => {
           const depIdx = d.activities.findIndex(x => x.id === a.id);
           const acts = [...d.activities];
           acts.splice(depIdx + 1, 0, arrival);
-          return { ...d, activities: acts };
+          return { ...d, activities: sortByTime(acts) };
         });
         return { ...p, days: updatedDays };
       }
@@ -1420,7 +1487,7 @@ const TripBuilder = () => {
         };
         const updatedDays = cleanDays.map((d, i) => {
           if (i !== targetDayIdx) return d;
-          return { ...d, activities: [...d.activities, checkout] };
+          return { ...d, activities: sortByTime([...d.activities, checkout]) };
         });
         return { ...p, days: updatedDays };
       }
@@ -1468,6 +1535,18 @@ const TripBuilder = () => {
           activities: d.activities.map(x =>
             x.id === a.hotel_bond_id
               ? { ...x, name: hotelName ? `Check-in: ${hotelName}` : x.name }
+              : x
+          ),
+        }));
+      }
+      // Sync flight arrival card fields live (airline, flight number, class, luggage)
+      const isFlightDep = ((a.type === "transport" && a.subtype === "flight") || a.type === "flight") && !a.is_arrival;
+      if (isFlightDep) {
+        days = days.map(d => ({
+          ...d,
+          activities: d.activities.map(x =>
+            x.is_arrival && x.flight_bond_id === a.id
+              ? { ...x, airline: a.airline, flight_number: a.flight_number, flight_class: a.flight_class, luggage_checkin: a.luggage_checkin, luggage_cabin: a.luggage_cabin, image_url: a.image_url || x.image_url, duration: a.duration || x.duration }
               : x
           ),
         }));
@@ -1562,6 +1641,12 @@ const TripBuilder = () => {
 
       // Insert into target day
       newDays[targetDayIdx].activities.splice(insertIndex, 0, movedActivity);
+
+      // Auto-sort by time after drop
+      newDays[sourceDayIdx].activities = sortByTime(newDays[sourceDayIdx].activities);
+      if (targetDayIdx !== sourceDayIdx) {
+        newDays[targetDayIdx].activities = sortByTime(newDays[targetDayIdx].activities);
+      }
 
       return { ...p, days: newDays };
     });
