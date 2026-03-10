@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo, Fragment } from "react"; // Fragment still used in row render
+import { useState, useRef, useEffect, useMemo } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
@@ -367,7 +367,7 @@ const TripBuilder = () => {
 
   // Drag and drop state
   const [draggedItem, setDraggedItem] = useState<{ dayId: string; activityIndex: number } | null>(null);
-  const [dragOverItem, setDragOverItem] = useState<{ dayId: string; activityIndex: number; position: 'before' | 'after'; rowIsRTL?: boolean } | null>(null);
+  const [dragOverItem, setDragOverItem] = useState<{ dayId: string; activityIndex: number; position: 'before' | 'after' } | null>(null);
   const dragScrollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Activity type filter
@@ -1606,9 +1606,8 @@ const TripBuilder = () => {
                       );
 
                       const currentDayId = trip.days[row.dayIndex].id;
-                      const isSelf = draggedItem?.dayId === currentDayId && draggedItem?.activityIndex === globalActIndex;
-                      const isDragging = isSelf;
-                      const isDragOver = !isAdd && !isSelf && dragOverItem?.dayId === currentDayId && dragOverItem?.activityIndex === globalActIndex;
+                      const isDragging = draggedItem?.dayId === currentDayId && draggedItem?.activityIndex === globalActIndex;
+                      const isDragOver = !isAdd && dragOverItem?.dayId === currentDayId && dragOverItem?.activityIndex === globalActIndex;
                       const dropPosition = isDragOver ? dragOverItem?.position : undefined;
 
                       // For "Add Activity" slot
@@ -1634,12 +1633,11 @@ const TripBuilder = () => {
 
                       const gap = showTransport && <div className="shrink-0" style={{ width: GAP }} />;
 
-                      const slotKey = isAdd ? `add-${row.dayIndex}` : activity!.id;
                       return (
-                        <Fragment key={slotKey}>
                         <div
+                          key={isAdd ? `add-${row.dayIndex}` : activity!.id}
                           className={cn(
-                            "flex items-center",
+                            "flex items-center transition-opacity duration-200",
                             !isAdd && filterTypes.length > 0 && !filterTypes.includes(activity!.type) && !filterTypes.includes(activity!.subtype ?? "") && "opacity-20"
                           )}
                         >
@@ -1707,9 +1705,6 @@ const TripBuilder = () => {
                               dropPosition={dropPosition}
                               onDragStart={(e) => {
                                 e.stopPropagation();
-                                // Show the full card as drag image (not just the browser's partial capture)
-                                const el = e.currentTarget as HTMLElement;
-                                e.dataTransfer.setDragImage(el, el.offsetWidth / 2, 30);
                                 setDraggedItem({ dayId: currentDayId, activityIndex: globalActIndex });
                               }}
                               onDragOver={(e) => {
@@ -1729,21 +1724,17 @@ const TripBuilder = () => {
                                 // Calculate drop position based on mouse X relative to slot center
                                 const rect = e.currentTarget.getBoundingClientRect();
                                 const position: 'before' | 'after' = e.clientX < rect.left + rect.width / 2 ? 'before' : 'after';
-                                setDragOverItem({ dayId: currentDayId, activityIndex: globalActIndex, position, rowIsRTL: row.isRTL });
+                                setDragOverItem({ dayId: currentDayId, activityIndex: globalActIndex, position });
                               }}
                               onDragEnd={() => {
                                 if (dragScrollRef.current) { clearInterval(dragScrollRef.current); dragScrollRef.current = null; }
                                 if (draggedItem && dragOverItem && dragOverItem.activityIndex !== -1) {
-                                  // Flip position for RTL rows: mouse 'before' (left half) = visual 'after' in sequence
-                                  const logicalPos = dragOverItem.rowIsRTL
-                                    ? (dragOverItem.position === 'before' ? 'after' : 'before')
-                                    : dragOverItem.position;
                                   reorderActivity(
                                     draggedItem.dayId,
                                     draggedItem.activityIndex,
                                     dragOverItem.dayId,
                                     dragOverItem.activityIndex,
-                                    logicalPos
+                                    dragOverItem.position
                                   );
                                 }
                                 setDraggedItem(null);
@@ -1758,7 +1749,6 @@ const TripBuilder = () => {
                           )}
                           {row.isRTL && gap}
                         </div>
-                        </Fragment>
                       );
                     })}
                   </div>
