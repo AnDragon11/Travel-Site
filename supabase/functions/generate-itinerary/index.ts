@@ -98,8 +98,8 @@ interface RegenDayRequest {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const COMFORT_NAMES = ["Budget", "Economy", "Standard", "Premium", "Luxury"];
-const COMFORT_EMOJIS = ["🎒", "💼", "⭐", "✨", "👑"];
+const COMFORT_NAMES = ["Nomad", "Smart", "Balanced", "Comfortable", "Luxurious"];
+const COMFORT_EMOJIS = ["🎒", "💼", "⚖️", "🏨", "💎"];
 
 function cabinClass(level: number): string {
   if (level <= 2) return "economy";
@@ -466,7 +466,7 @@ function buildPrompt(form: TripFormData, real: RealData | null): string {
   const dates = tripDays(form);
   const numDays = dates.length;
   const nights = numDays - 1;
-  const comfortName = COMFORT_NAMES[form.comfort_level - 1] ?? "Standard";
+  const comfortName = COMFORT_NAMES[form.comfort_level - 1] ?? "Balanced";
   const comfortEmoji = COMFORT_EMOJIS[form.comfort_level - 1] ?? "⭐";
   const prefs = form.preferences.length > 0 ? form.preferences.join(", ") : "general sightseeing";
   const kidsNote = form.kids > 0 ? `\n- Kids: ${form.kids} (include kid-friendly activities throughout)` : "";
@@ -626,7 +626,7 @@ ${realSection}
 
 function buildRegenDayPrompt(req: RegenDayRequest): string {
   const comfort = req.comfort_level ?? 3;
-  const comfortName = COMFORT_NAMES[comfort - 1] ?? "Standard";
+  const comfortName = COMFORT_NAMES[comfort - 1] ?? "Balanced";
   const existingNote = req.existingActivities?.length
     ? `\nAlready planned on other days (avoid duplicates): ${req.existingActivities.join(", ")}`
     : "";
@@ -912,8 +912,8 @@ serve(async (req) => {
 
     // Canonical overrides (AI formats these inconsistently)
     itinerary.comfort_level = form.comfort_level;
-    itinerary.comfort_level_name = COMFORT_NAMES[form.comfort_level - 1] ?? "Standard";
-    itinerary.comfort_level_emoji = COMFORT_EMOJIS[form.comfort_level - 1] ?? "⭐";
+    itinerary.comfort_level_name = COMFORT_NAMES[form.comfort_level - 1] ?? "Balanced";
+    itinerary.comfort_level_emoji = COMFORT_EMOJIS[form.comfort_level - 1] ?? "⚖️";
 
     // Pick the best activity image as thumbnail — prefer sightseeing/activity (the reason people travel)
     // then dining/cafe/shopping, skip flights and transport as they're generic
