@@ -640,8 +640,15 @@ function resolveActivityImage(act: any, hotelOptions: HotelOption[], activityOpt
 
 // ─── Flight card injection ────────────────────────────────────────────────────
 
+function bagsForCabin(cabinCls: string): { cabin: number; checkin: number } {
+  if (cabinCls === "first" || cabinCls === "business") return { cabin: 2, checkin: 2 };
+  if (cabinCls === "premium_economy") return { cabin: 1, checkin: 1 };
+  return { cabin: 1, checkin: 1 }; // economy default
+}
+
 function buildFlightCards(slice: FlightSlice, cabinCls: string, isReturnLeg: boolean): any[] {
   const cards: any[] = [];
+  const bags = bagsForCabin(cabinCls);
   for (let i = 0; i < slice.segments.length; i++) {
     const seg = slice.segments[i];
     const depId = generateId();
@@ -670,8 +677,10 @@ function buildFlightCards(slice: FlightSlice, cabinCls: string, isReturnLeg: boo
       flight_class: cabinCls,
       departure_terminal: seg.depTerminal,
       arrival_terminal: seg.arrTerminal,
+      luggage_cabin: bags.cabin,
+      luggage_checkin: bags.checkin,
       cost: 0,  // set by caller for first segment
-      notes: `${seg.airline} ${seg.flightNo}.${termNote ? " " + termNote + "." : ""}`.trim(),
+      notes: `${seg.airline} ${seg.flightNo}.${termNote ? " " + termNote + "." : ""} ${bags.cabin} cabin bag${bags.cabin > 1 ? "s" : ""}, ${bags.checkin} checked bag${bags.checkin > 1 ? "s" : ""} included.`.trim(),
       is_arrival: false,
       image_url: airlineLogo,
       booking_url: "",
