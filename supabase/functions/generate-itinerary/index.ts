@@ -70,6 +70,7 @@ interface HotelOption {
   currency: string;
   address: string;
   hotelId: string;
+  imageUrl?: string; // from Amadeus hotel media if available
 }
 
 interface POIOption {
@@ -263,6 +264,7 @@ async function fetchHotels(
         currency: offer.price.currency ?? "USD",
         address: h.hotel.address?.lines?.[0] ?? cityCode,
         hotelId: h.hotel.hotelId,
+        imageUrl: (h.hotel.media as any[] | undefined)?.find((m: any) => m.uri?.startsWith("http"))?.uri,
       };
 
       // Cache hotel + amenities (fire & forget)
@@ -540,8 +542,9 @@ ${groupNote}
     if (!real || real.flights.length === 0) items.push(`- Flights ${form.departure_city}→${form.destination_city} around ${dates[0]}`);
     if (!real || real.hotels.length === 0) items.push(`- ${comfortName}-tier hotels in ${form.destination_city}`);
     if (!hasPOI) items.push(`- Top-rated attractions, restaurants, and experiences in ${form.destination_city}`);
-    if (items.length === 0) return ` (no search needed — all real data provided above)\nUse your training knowledge for visa/entry context, seasonal weather, and local transport options.`;
-    return ` — use web search for:\n${items.join("\n")}\n- Visa/entry requirements for ${form.passport_country} passport holders entering ${form.destination_city}\n- Weather in ${form.destination_city} around ${dates[0]} — adjust outdoor activities`;
+    if (!real) items.push(`- Local transport options and prices in ${form.destination_city} (metro, taxi, airport transfer)`);
+    if (items.length === 0) return ` — none needed, all real data provided above.`;
+    return ` — use web search for:\n${items.join("\n")}`;
   })()}
 ${realSection}
 
@@ -579,10 +582,9 @@ ${realSection}
           "location": "<city district or neighborhood>",
           "address": "<full street address>",
           "cost": <per-person USD, 0 if free>,
-          "notes": "<practical tip, visa note, booking advice, or opening hours>",
+          "notes": "<practical tip, booking advice, or opening hours>",
           "rating": <real venue rating 1-5 if known>,
           "booking_url": "<direct booking or tickets URL>",
-          "image_url": "<photo URL if known from training data, or omit — fallback will be applied>",
           "opening_hours": "<e.g. 09:00-18:00 or omit if not applicable>",
           "airline": "<for flights only — exact airline name>",
           "flight_number": "<for flights only — e.g. BA123>",
@@ -615,7 +617,7 @@ ${realSection}
 5. All costs per person in USD, realistic for ${form.destination_city} at comfort level ${form.comfort_level}/5
 6. Group activities geographically — cluster nearby attractions to minimize travel time
 7. Fill ALL type-specific fields for each activity — airline+flight_number for flights, stars+checkin_time+nights+cost_per_night for hotels, cuisine+reservation_required for dining, etc.
-8. Every activity MUST have address and notes; image_url only if you know a real URL from training (omit if unsure)
+8. Every activity MUST have address and notes
 9. Adapt all activities to the group type: ${form.group_type}
 10. No markdown fences, no text outside the JSON`;
 }
@@ -649,7 +651,6 @@ function buildRegenDayPrompt(req: RegenDayRequest): string {
       "address": "<full street address>",
       "cost": <per-person USD, 0 if free>,
       "notes": "<practical tip or booking advice>",
-      "image_url": "<real photo URL from official site or Wikipedia>",
       "booking_url": "<optional direct link>",
       "cuisine": "<for dining/cafe only>",
       "reservation_required": <for dining — true or false>,
@@ -664,7 +665,7 @@ function buildRegenDayPrompt(req: RegenDayRequest): string {
 2. Do NOT include flights or hotel check-in/check-out (those are managed separately)
 3. Mix activity types: sightseeing, local dining, transport, experiences
 4. Use real specific venue names in ${req.destination} — no generic placeholders
-5. Every activity needs image_url, address, and notes
+5. Every activity needs address and notes
 6. No markdown fences, no text outside the JSON`;
 }
 
@@ -754,6 +755,33 @@ function activityImageUrl(type: string): string {
   return FALLBACK_IMAGES[type] ?? FALLBACK_IMAGES.sightseeing;
 }
 
+// Resolve image_url from real API data (no AI needed):
+// 1. Flights → airline logo by IATA code (kiwi.com CDN, free, reliable)
+// 2. Accommodation check-in → hotel image from Amadeus if available
+// 3. Everything else → type-based Unsplash fallback
+function resolveActivityImage(act: any, hotelOptions: HotelOption[]): string {
+  const isFlightType = act.type === "flight" ||
+    (act.type === "transport" && (act.subtype === "flight" || act.flight_number));
+
+  if (isFlightType && act.flight_number) {
+    const iata = String(act.flight_number).slice(0, 2).toUpperCase().replace(/[^A-Z0-9]/g, "");
+    if (iata.length === 2) {
+      return `https://images.kiwi.com/airlines/64/${iata}.png`;
+    }
+  }
+
+  if (act.type === "accommodation" && !act.is_checkout && hotelOptions.length > 0) {
+    const actName = (act.name ?? "").toLowerCase();
+    const matched = hotelOptions.find(h => {
+      const hotelName = h.name.toLowerCase();
+      return actName.includes(hotelName.slice(0, 8)) || hotelName.includes(actName.slice(0, 8));
+    });
+    if (matched?.imageUrl) return matched.imageUrl;
+  }
+
+  return activityImageUrl(act.type ?? "");
+}
+
 // ─── Main ──────────────────────────────────────────────────────────────────────
 
 serve(async (req) => {
@@ -774,7 +802,7 @@ serve(async (req) => {
       const parsed = parseAIJSON(raw);
       const activities: any[] = Array.isArray(parsed.activities) ? parsed.activities : [];
       for (const act of activities) {
-        if (!act.image_url?.startsWith("http")) act.image_url = activityImageUrl(act.type ?? "");
+        act.image_url = resolveActivityImage(act, []);
       }
       return new Response(JSON.stringify({ activities }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -870,16 +898,13 @@ serve(async (req) => {
     const raw = await callXAI(buildPrompt(form, real), !hasFullData);
     const itinerary = parseAIJSON(raw);
 
-    // Fill missing image_url with keyword-based Unsplash fallback
-    // (Grok search provides real images; this only applies when none was found)
+    // Enrich image_url from real API data — AI no longer provides these
     const dailyItinerary = itinerary.daily_itinerary as any[];
     if (Array.isArray(dailyItinerary)) {
       for (const day of dailyItinerary) {
         if (Array.isArray(day.activities)) {
           for (const act of day.activities) {
-            if (!act.image_url || !act.image_url.startsWith("http")) {
-              act.image_url = activityImageUrl(act.type ?? "");
-            }
+            act.image_url = resolveActivityImage(act, real?.hotels ?? []);
           }
         }
       }
