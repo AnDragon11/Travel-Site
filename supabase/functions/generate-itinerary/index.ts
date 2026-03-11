@@ -535,10 +535,14 @@ Today's date: ${today}
 # GROUP PROFILE
 ${groupNote}
 
-# RESEARCH — use web search for:
-- Visa/entry requirements for ${form.passport_country} passport holders entering ${form.destination_city}
-- Weather in ${form.destination_city} around ${dates[0]} — adjust outdoor activities
-- Local transport prices (metro, taxi, airport transfers)${hasPOI ? "" : `\n- Top-rated attractions, restaurants, and experiences in ${form.destination_city}`}${real?.flights.length ? "" : `\n- Flights ${form.departure_city}→${form.destination_city} around ${dates[0]}`}${real?.hotels.length ? "" : `\n- ${comfortName}-tier hotels in ${form.destination_city}`}
+# RESEARCH${(() => {
+    const items: string[] = [];
+    if (!real || real.flights.length === 0) items.push(`- Flights ${form.departure_city}→${form.destination_city} around ${dates[0]}`);
+    if (!real || real.hotels.length === 0) items.push(`- ${comfortName}-tier hotels in ${form.destination_city}`);
+    if (!hasPOI) items.push(`- Top-rated attractions, restaurants, and experiences in ${form.destination_city}`);
+    if (items.length === 0) return ` (no search needed — all real data provided above)\nUse your training knowledge for visa/entry context, seasonal weather, and local transport options.`;
+    return ` — use web search for:\n${items.join("\n")}\n- Visa/entry requirements for ${form.passport_country} passport holders entering ${form.destination_city}\n- Weather in ${form.destination_city} around ${dates[0]} — adjust outdoor activities`;
+  })()}
 ${realSection}
 
 # OUTPUT — return ONLY this JSON (no markdown, no explanation):
@@ -578,7 +582,7 @@ ${realSection}
           "notes": "<practical tip, visa note, booking advice, or opening hours>",
           "rating": <real venue rating 1-5 if known>,
           "booking_url": "<direct booking or tickets URL>",
-          "image_url": "<real hero image from official site, Wikipedia, or TripAdvisor — required>",
+          "image_url": "<photo URL if known from training data, or omit — fallback will be applied>",
           "opening_hours": "<e.g. 09:00-18:00 or omit if not applicable>",
           "airline": "<for flights only — exact airline name>",
           "flight_number": "<for flights only — e.g. BA123>",
@@ -611,7 +615,7 @@ ${realSection}
 5. All costs per person in USD, realistic for ${form.destination_city} at comfort level ${form.comfort_level}/5
 6. Group activities geographically — cluster nearby attractions to minimize travel time
 7. Fill ALL type-specific fields for each activity — airline+flight_number for flights, stars+checkin_time+nights+cost_per_night for hotels, cuisine+reservation_required for dining, etc.
-8. Every activity MUST have image_url (real photo from official site or Wikipedia), address, and notes
+8. Every activity MUST have address and notes; image_url only if you know a real URL from training (omit if unsure)
 9. Adapt all activities to the group type: ${form.group_type}
 10. No markdown fences, no text outside the JSON`;
 }
@@ -666,7 +670,7 @@ function buildRegenDayPrompt(req: RegenDayRequest): string {
 
 // ─── xAI ──────────────────────────────────────────────────────────────────────
 
-async function callXAI(prompt: string): Promise<string> {
+async function callXAI(prompt: string, enableSearch = true): Promise<string> {
   // Use the Responses API (supports built-in web_search tool)
   const r = await fetch("https://api.x.ai/v1/responses", {
     method: "POST",
@@ -682,7 +686,7 @@ async function callXAI(prompt: string): Promise<string> {
       ],
       temperature: 0.7,
       max_output_tokens: 8000,
-      tools: [{ type: "web_search" }],
+      ...(enableSearch ? { tools: [{ type: "web_search" }] } : {}),
     }),
   });
   if (!r.ok) {
@@ -766,7 +770,7 @@ serve(async (req) => {
     if (body.regenDay) {
       const regenReq = body.regenDay as RegenDayRequest;
       const prompt = buildRegenDayPrompt(regenReq);
-      const raw = await callXAI(prompt);
+      const raw = await callXAI(prompt, false); // regen day: no web search, use training data
       const parsed = parseAIJSON(raw);
       const activities: any[] = Array.isArray(parsed.activities) ? parsed.activities : [];
       for (const act of activities) {
@@ -860,7 +864,10 @@ serve(async (req) => {
     }
 
     // ── Generate itinerary ───────────────────────────────────────────────────
-    const raw = await callXAI(buildPrompt(form, real));
+    // Disable web search when all three data sources are provided — AI has everything it needs
+    const hasFullData = !!(real && real.flights.length > 0 && real.hotels.length > 0 && real.poi.length > 0);
+    console.log(`Web search: ${hasFullData ? "disabled (full API data)" : "enabled (partial/no API data)"}`);
+    const raw = await callXAI(buildPrompt(form, real), !hasFullData);
     const itinerary = parseAIJSON(raw);
 
     // Fill missing image_url with keyword-based Unsplash fallback
