@@ -1,23 +1,26 @@
 import { useEffect, useState } from "react";
-import { Loader2, Plane } from "lucide-react";
+import { Loader2, Plane, X } from "lucide-react";
 import { LOADING_MESSAGES, MESSAGE_INTERVAL } from "@/config/api";
 import { cn } from "@/lib/utils";
 
 interface LoadingOverlayProps {
   isVisible: boolean;
+  onCancel?: () => void;
 }
 
-const LoadingOverlay = ({ isVisible }: LoadingOverlayProps) => {
+const LoadingOverlay = ({ isVisible, onCancel }: LoadingOverlayProps) => {
   const [messageIndex, setMessageIndex] = useState(0);
   const [isAnimating, setIsAnimating] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
 
   useEffect(() => {
     if (!isVisible) {
       setMessageIndex(0);
+      setElapsed(0);
       return;
     }
 
-    const interval = setInterval(() => {
+    const msgInterval = setInterval(() => {
       setIsAnimating(true);
       setTimeout(() => {
         setMessageIndex((prev) => (prev + 1) % LOADING_MESSAGES.length);
@@ -25,10 +28,18 @@ const LoadingOverlay = ({ isVisible }: LoadingOverlayProps) => {
       }, 300);
     }, MESSAGE_INTERVAL);
 
-    return () => clearInterval(interval);
+    const ticker = setInterval(() => setElapsed((s) => s + 1), 1000);
+
+    return () => {
+      clearInterval(msgInterval);
+      clearInterval(ticker);
+    };
   }, [isVisible]);
 
   if (!isVisible) return null;
+
+  const formatElapsed = (s: number) =>
+    `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
@@ -56,9 +67,21 @@ const LoadingOverlay = ({ isVisible }: LoadingOverlayProps) => {
           </p>
         </div>
 
-        <p className="text-sm text-muted-foreground">
-          This usually takes up to 45 seconds
+        {/* Elapsed time */}
+        <p className="text-sm text-muted-foreground tabular-nums">
+          {formatElapsed(elapsed)} elapsed
         </p>
+
+        {/* Cancel button */}
+        {onCancel && (
+          <button
+            onClick={onCancel}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-border text-sm text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors"
+          >
+            <X className="w-3.5 h-3.5" />
+            Cancel
+          </button>
+        )}
       </div>
     </div>
   );

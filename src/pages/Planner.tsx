@@ -44,6 +44,7 @@ const Planner = () => {
   const [comfortLevel, setComfortLevel] = useState(3);
   const [showErrorModal, setShowErrorModal] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Check if current step can proceed
   const canProceed = () => {
@@ -228,8 +229,14 @@ const Planner = () => {
     setCurrentStep(4);
   };
 
+  const handleCancel = () => {
+    abortControllerRef.current?.abort();
+  };
+
   const handleFinalSubmit = async () => {
     setStepSubmitting(true);
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
     try {
       // Build full form data
       const formData: TripFormData = {
@@ -248,7 +255,7 @@ const Planner = () => {
       setIsLoading(true);
       setError(null);
 
-      const itineraryData = await submitTripRequest(formData);
+      const itineraryData = await submitTripRequest(formData, controller.signal);
 
       if (itineraryData.isPlaceholder) {
         toast.warning("AI service is temporarily unavailable. Showing a sample itinerary — please refresh and try again.");
@@ -269,11 +276,16 @@ const Planner = () => {
       }
       navigate(`/trip/${savedTrip.id}`);
     } catch (err) {
+      if (err instanceof Error && err.message === 'cancelled') {
+        // User cancelled — silently reset, no error modal
+        return;
+      }
       const message = err instanceof Error ? err.message : "Something went wrong";
       setErrorMessage(message);
       setShowErrorModal(true);
       setError(message);
     } finally {
+      abortControllerRef.current = null;
       setStepSubmitting(false);
       setIsLoading(false);
     }
@@ -290,7 +302,7 @@ const Planner = () => {
       className="h-screen overflow-hidden flex flex-col bg-gradient-to-br from-accent via-background to-muted"
     >
       <Header />
-      <LoadingOverlay isVisible={isLoading} />
+      <LoadingOverlay isVisible={isLoading} onCancel={handleCancel} />
       <ErrorModal 
         isOpen={showErrorModal} 
         onClose={() => setShowErrorModal(false)}

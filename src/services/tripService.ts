@@ -356,7 +356,7 @@ const submitDirectToEdge = async (formData: TripFormData): Promise<TripItinerary
  * then wait for it to write the result back via Realtime subscription.
  * Works for both authenticated users (userId = string) and guests (userId = null).
  */
-const submitViaSupabase = (formData: TripFormData, userId: string | null): Promise<TripItinerary> => {
+const submitViaSupabase = (formData: TripFormData, userId: string | null, signal?: AbortSignal): Promise<TripItinerary> => {
   return new Promise((resolve, reject) => {
     let channel: ReturnType<typeof supabase.channel> | null = null;
     let pollId: ReturnType<typeof setInterval> | null = null;
@@ -376,6 +376,14 @@ const submitViaSupabase = (formData: TripFormData, userId: string | null): Promi
       cleanup();
       reject(new Error("Request timed out after 120 seconds"));
     }, 120000);
+
+    if (signal) {
+      signal.addEventListener('abort', () => {
+        clearTimeout(timeoutId);
+        cleanup();
+        reject(new Error('cancelled'));
+      });
+    }
 
     (async () => {
       try {
@@ -481,7 +489,7 @@ const submitViaSupabase = (formData: TripFormData, userId: string | null): Promi
  * After inserting the row the edge function is invoked to generate the itinerary.
  * If the insert fails, falls back to a direct edge function call (returns inline).
  */
-export const submitTripRequest = async (formData: TripFormData): Promise<TripItinerary> => {
+export const submitTripRequest = async (formData: TripFormData, signal?: AbortSignal): Promise<TripItinerary> => {
   console.log("=== Trip Planning Request ===");
   console.log("Form Data:", JSON.stringify(formData, null, 2));
 
@@ -489,5 +497,5 @@ export const submitTripRequest = async (formData: TripFormData): Promise<TripIti
   const userId = session?.user?.id ?? null;
 
   console.log(userId ? `Authenticated (${userId}) — routing via Supabase` : "Guest — routing via Supabase with null user_id");
-  return submitViaSupabase(formData, userId);
+  return submitViaSupabase(formData, userId, signal);
 };
