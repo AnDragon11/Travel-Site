@@ -174,6 +174,8 @@ export const ActivityDialog = ({
   const isHotelActivity = form.type === "accommodation";
   const isTransportActivity = form.type === "transport" || form.type === "flight";
   const isNonFlightTransport = isTransportActivity && !isFlightActivity;
+  const isFoodActivity = form.type === "food" || form.type === "dining" || form.type === "cafe";
+  const isExperienceActivity = form.type === "experience" || form.type === "sightseeing" || form.type === "activity" || form.type === "shopping";
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) handleCancel(); }}>
@@ -287,12 +289,19 @@ export const ActivityDialog = ({
                 </div>
               )}
 
-              {/* To — non-flight transport only */}
+              {/* To + Operator — non-flight transport only */}
               {isNonFlightTransport && (
-                <div className="space-y-1.5">
-                  <Label>To</Label>
-                  <Input value={form.destination_airport || ""} onChange={(e) => updateForm({ destination_airport: e.target.value })}
-                    placeholder="e.g. Brussels-Midi" />
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label>To</Label>
+                    <Input value={form.arrival_station || form.destination_airport || ""} onChange={(e) => updateForm({ arrival_station: e.target.value, destination_airport: e.target.value })}
+                      placeholder="e.g. Brussels-Midi" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Operator</Label>
+                    <Input value={form.operator || ""} onChange={(e) => updateForm({ operator: e.target.value })}
+                      placeholder="e.g. Eurostar, FlixBus" />
+                  </div>
                 </div>
               )}
 
@@ -329,6 +338,14 @@ export const ActivityDialog = ({
                     <div className="space-y-1.5">
                       <Label className="text-xs">Flight No.</Label>
                       <Input value={form.flight_number || ""} onChange={(e) => updateForm({ flight_number: e.target.value })} placeholder="e.g. BA123" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Dep. Terminal</Label>
+                      <Input value={form.departure_terminal || ""} onChange={(e) => updateForm({ departure_terminal: e.target.value })} placeholder="e.g. T2" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Arr. Terminal</Label>
+                      <Input value={form.arrival_terminal || ""} onChange={(e) => updateForm({ arrival_terminal: e.target.value })} placeholder="e.g. T1" />
                     </div>
                   </div>
                   <div className="grid grid-cols-3 gap-3">
@@ -387,6 +404,32 @@ export const ActivityDialog = ({
                       <Label className="text-xs">Bed Type</Label>
                       <Input value={form.bed_types || ""} onChange={(e) => updateForm({ bed_types: e.target.value })} placeholder="King, Twin…" />
                     </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Room Type</Label>
+                      <Input value={form.room_type || ""} onChange={(e) => updateForm({ room_type: e.target.value })} placeholder="Deluxe Double, Suite…" />
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Address</Label>
+                    <Input value={form.address || ""} onChange={(e) => updateForm({ address: e.target.value })} placeholder="Full street address" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Cancellation Policy</Label>
+                    <Input value={form.cancellation_policy || ""} onChange={(e) => updateForm({ cancellation_policy: e.target.value })} placeholder="e.g. Free cancellation until 24h before" />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => updateForm({ breakfast_included: !form.breakfast_included })}
+                      className={cn(
+                        "px-3 py-1.5 rounded-lg border text-xs font-medium transition-all",
+                        form.breakfast_included
+                          ? "border-transparent bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300"
+                          : "border-border bg-background text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      🍳 Breakfast {form.breakfast_included ? "Included" : "Not Included"}
+                    </button>
                   </div>
                   {/* Amenities chips */}
                   <div className="space-y-1.5">
@@ -414,6 +457,83 @@ export const ActivityDialog = ({
                       })}
                     </div>
                   </div>
+                </div>
+              )}
+
+              {/* ── Dining / Cafe fields ── */}
+              {isFoodActivity && (
+                <div className="space-y-3 p-3 rounded-lg bg-orange-50/50 dark:bg-orange-950/30 border border-orange-200/50 dark:border-orange-800/50">
+                  <p className="text-xs font-semibold text-orange-600 dark:text-orange-400 uppercase tracking-wide">Dining Details</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Cuisine</Label>
+                      <Input value={form.cuisine || ""} onChange={(e) => updateForm({ cuisine: e.target.value })} placeholder="e.g. Italian, Japanese" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Opening Hours</Label>
+                      <Input value={form.opening_hours || ""} onChange={(e) => updateForm({ opening_hours: e.target.value })} placeholder="e.g. 12:00–22:00" />
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Price Range</Label>
+                      <div className="flex gap-1">
+                        {[1, 2, 3, 4].map((n) => (
+                          <button key={n} type="button" onClick={() => updateForm({ price_range: form.price_range === n ? undefined : n })}
+                            className={cn(
+                              "px-2.5 py-1 rounded-lg border text-xs font-medium transition-all",
+                              form.price_range === n
+                                ? "border-transparent bg-orange-100 dark:bg-orange-900 text-orange-700 dark:text-orange-300"
+                                : "border-border bg-background text-muted-foreground hover:text-foreground"
+                            )}>
+                            {"$".repeat(n)}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">&nbsp;</Label>
+                      <button type="button" onClick={() => updateForm({ reservation_required: !form.reservation_required })}
+                        className={cn(
+                          "px-3 py-1.5 rounded-lg border text-xs font-medium transition-all",
+                          form.reservation_required
+                            ? "border-transparent bg-orange-100 dark:bg-orange-900 text-orange-700 dark:text-orange-300"
+                            : "border-border bg-background text-muted-foreground hover:text-foreground"
+                        )}>
+                        {form.reservation_required ? "📅 Reservation Required" : "📅 No Reservation Needed"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ── Experience / Sightseeing fields ── */}
+              {isExperienceActivity && (
+                <div className="space-y-3 p-3 rounded-lg bg-emerald-50/50 dark:bg-emerald-950/30 border border-emerald-200/50 dark:border-emerald-800/50">
+                  <p className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wide">Experience Details</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Category</Label>
+                      <Input value={form.category || ""} onChange={(e) => updateForm({ category: e.target.value })} placeholder="e.g. museum, park, beach" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Opening Hours</Label>
+                      <Input value={form.opening_hours || ""} onChange={(e) => updateForm({ opening_hours: e.target.value })} placeholder="e.g. 09:00–18:00" />
+                    </div>
+                    <div className="space-y-1.5 col-span-2">
+                      <Label className="text-xs">Ticket Link</Label>
+                      <Input value={form.ticket_url || ""} onChange={(e) => updateForm({ ticket_url: e.target.value })} placeholder="https://…" />
+                    </div>
+                  </div>
+                  <button type="button" onClick={() => updateForm({ tickets_required: !form.tickets_required })}
+                    className={cn(
+                      "px-3 py-1.5 rounded-lg border text-xs font-medium transition-all",
+                      form.tickets_required
+                        ? "border-transparent bg-emerald-100 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300"
+                        : "border-border bg-background text-muted-foreground hover:text-foreground"
+                    )}>
+                    🎟️ {form.tickets_required ? "Tickets Required" : "No Tickets Required"}
+                  </button>
                 </div>
               )}
 
