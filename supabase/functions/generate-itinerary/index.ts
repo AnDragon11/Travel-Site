@@ -14,6 +14,7 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const DUFFEL_API_KEY = Deno.env.get("DUFFEL_API_KEY");
 const AMADEUS_CLIENT_ID = Deno.env.get("AMADEUS_CLIENT_ID");
 const AMADEUS_CLIENT_SECRET = Deno.env.get("AMADEUS_CLIENT_SECRET");
+const TRAVELPAYOUTS_TOKEN = Deno.env.get("TRAVELPAYOUTS_TOKEN");
 // Use test.api.amadeus.com for test keys, api.amadeus.com for production
 const AMADEUS_BASE = Deno.env.get("AMADEUS_BASE_URL") ?? "https://test.api.amadeus.com";
 
@@ -58,6 +59,7 @@ interface RoundTripOption {
   retStops: number;
   pricePerPerson: number;
   currency: string;
+  isApproximate?: boolean; // true for Travelpayouts cached/historical data
 }
 
 interface HotelOption {
@@ -70,11 +72,27 @@ interface HotelOption {
   hotelId: string;
 }
 
+interface POIOption {
+  name: string;
+  category: string;
+  rank: number;
+}
+
 interface RealData {
   origin: ResolvedCity | null;
   destination: ResolvedCity | null;
   flights: RoundTripOption[];
   hotels: HotelOption[];
+  poi: POIOption[];
+}
+
+interface RegenDayRequest {
+  dayIndex: number;       // 1-based day number (for display in prompt)
+  dayDate: string;        // YYYY-MM-DD or "Day N"
+  destination: string;
+  travelers: number;
+  comfort_level?: number;
+  existingActivities?: string[]; // activity names from other days (for dedup)
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -213,28 +231,28 @@ async function fetchHotels(
   // Step 1 — hotel list by city code
   const listR = await fetch(
     `${AMADEUS_BASE}/v1/reference-data/locations/hotels/by-city?cityCode=${cityCode}&ratings=${starRatings(comfortLevel)}&hotelSource=ALL`,
-    { headers: { Authorization: `Bearer ${token}` } },
+    { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(10_000) },
   );
   if (!listR.ok) return [];
   const { data: hotelList } = await listR.json();
   if (!hotelList?.length) return [];
 
-  const hotelIds = hotelList.slice(0, 25).map((h: any) => h.hotelId).join(",");
+  const hotelIds = hotelList.slice(0, 10).map((h: any) => h.hotelId).join(",");
 
   // Step 2 — get live offers for those hotels
   const offR = await fetch(
     `${AMADEUS_BASE}/v3/shopping/hotel-offers?hotelIds=${hotelIds}&adults=${adults}&checkInDate=${checkin}&checkOutDate=${checkout}&roomQuantity=1&currency=USD&bestRateOnly=true`,
-    { headers: { Authorization: `Bearer ${token}` } },
+    { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(10_000) },
   );
   if (!offR.ok) return [];
   const { data: offerData } = await offR.json();
   if (!offerData?.length) return [];
 
-  const labels = ["A", "B", "C", "D", "E"];
+  const labels = ["A", "B", "C"];
   const options: HotelOption[] = offerData
     .filter((h: any) => h.offers?.[0]?.price?.total)
     .sort((a: any, b: any) => Number(a.offers[0].price.total) - Number(b.offers[0].price.total))
-    .slice(0, 5)
+    .slice(0, 3)
     .map((h: any, i: number) => {
       const offer = h.offers[0];
       const hotel: HotelOption = {
@@ -289,7 +307,7 @@ async function fetchFlights(
   ];
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 30_000);
+  const timer = setTimeout(() => controller.abort(), 12_000);
 
   let resp: Response;
   try {
@@ -321,11 +339,11 @@ async function fetchFlights(
   const { data } = await resp.json();
   const offers: any[] = data?.offers ?? [];
 
-  const labels = ["A", "B", "C", "D", "E"];
+  const labels = ["A", "B", "C"];
   return offers
     .filter((o: any) => o.total_amount && o.slices?.length === 2)
     .sort((a: any, b: any) => Number(a.total_amount) - Number(b.total_amount))
-    .slice(0, 5)
+    .slice(0, 3)
     .map((o: any, i: number): RoundTripOption => {
       const [outSlice, retSlice] = o.slices;
       const outSeg0 = outSlice.segments[0];
@@ -353,15 +371,88 @@ async function fetchFlights(
     });
 }
 
+// ─── Amadeus POI ──────────────────────────────────────────────────────────────
+
+async function fetchPOIs(lat: number, lng: number, token: string): Promise<POIOption[]> {
+  const r = await fetch(
+    `${AMADEUS_BASE}/v1/reference-data/locations/pois?latitude=${lat.toFixed(4)}&longitude=${lng.toFixed(4)}&radius=20&page[limit]=15`,
+    { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(8_000) },
+  );
+  if (!r.ok) return [];
+  const { data } = await r.json();
+  if (!data?.length) return [];
+  return (data as any[])
+    .map((p: any): POIOption => ({ name: p.name, category: p.category ?? "attraction", rank: Number(p.rank) || 0 }))
+    .sort((a, b) => b.rank - a.rank);
+}
+
+// ─── Travelpayouts (cached price fallback) ────────────────────────────────────
+
+async function fetchFlightsTravelpayouts(
+  originIata: string,
+  destIata: string,
+  departDate: string,
+  adults: number,
+  kids: number,
+): Promise<RoundTripOption[]> {
+  if (!TRAVELPAYOUTS_TOKEN) return [];
+  const beginningOfPeriod = departDate.slice(0, 8) + "01"; // YYYY-MM-01
+  const params = new URLSearchParams({
+    origin: originIata,
+    destination: destIata,
+    currency: "usd",
+    beginning_of_period: beginningOfPeriod,
+    period_type: "month",
+    limit: "5",
+    token: TRAVELPAYOUTS_TOKEN,
+  });
+
+  const r = await fetch(`https://api.travelpayouts.com/v2/prices/latest?${params}`, {
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!r.ok) return [];
+  const json = await r.json();
+  if (!json.success || !json.data?.length) return [];
+
+  const labels = ["A", "B", "C", "D", "E"];
+  const totalPax = adults + kids;
+
+  return (json.data as any[]).slice(0, 5).map((entry, i): RoundTripOption => {
+    const durTo = entry.duration_to
+      ? `${Math.floor(entry.duration_to / 60)}h ${entry.duration_to % 60}m` : "varies";
+    const durBack = entry.duration_back
+      ? `${Math.floor(entry.duration_back / 60)}h ${entry.duration_back % 60}m` : "varies";
+    return {
+      label: labels[i],
+      outAirline: entry.airline ?? "Unknown",
+      outFlightNo: `${entry.airline ?? ""}${entry.flight_number ?? ""}`,
+      outDepartAt: entry.departure_at ?? `${departDate}T08:00:00`,
+      outArriveAt: entry.departure_at ?? `${departDate}T10:00:00`,
+      outDuration: durTo,
+      outStops: entry.transfers ?? 0,
+      retAirline: entry.airline ?? "Unknown",
+      retFlightNo: `${entry.airline ?? ""}${entry.flight_number ?? ""}`,
+      retDepartAt: entry.return_at ?? "",
+      retArriveAt: entry.return_at ?? "",
+      retDuration: durBack,
+      retStops: entry.return_transfers ?? 0,
+      pricePerPerson: Number(entry.price), // TP prices are per-person round-trip
+      currency: "USD",
+      isApproximate: true,
+    };
+  });
+}
+
 // ─── Prompt ───────────────────────────────────────────────────────────────────
 
 function flightLine(f: RoundTripOption, totalPax: number): string {
   const stop = (n: number) => n === 0 ? "non-stop" : `${n} stop${n > 1 ? "s" : ""}`;
   const total = (f.pricePerPerson * totalPax).toFixed(0);
+  const priceNote = f.isApproximate ? " (est. — cached price, may vary)" : "";
   return [
     `  ${f.label}) OUT  ${f.outAirline} ${f.outFlightNo}: ${fmtDate(f.outDepartAt)} ${fmtTime(f.outDepartAt)}→${fmtTime(f.outArriveAt)}, ${f.outDuration} ${stop(f.outStops)}`,
     `     RET  ${f.retAirline} ${f.retFlightNo}: ${fmtDate(f.retDepartAt)} ${fmtTime(f.retDepartAt)}→${fmtTime(f.retArriveAt)}, ${f.retDuration} ${stop(f.retStops)}`,
-    `     PRICE  $${f.pricePerPerson.toFixed(0)}/person ($${total} total)`,
+    `     PRICE  $${f.pricePerPerson.toFixed(0)}/person ($${total} total)${priceNote}`,
   ].join("\n");
 }
 
@@ -399,29 +490,35 @@ function buildPrompt(form: TripFormData, real: RealData | null): string {
   const groupNote = groupTypeNotes[form.group_type] ?? `Group type: ${form.group_type}`;
 
   // Real data section
+  const hasPOI = (real?.poi?.length ?? 0) > 0;
   let realSection = "";
-  if (real && (real.flights.length > 0 || real.hotels.length > 0)) {
+  if (real && (real.flights.length > 0 || real.hotels.length > 0 || hasPOI)) {
     const parts: string[] = ["\n═══ REAL API DATA — use these exact values ═══"];
 
     if (real.flights.length > 0) {
-      parts.push(`\nFLIGHT OPTIONS (choose ONE letter — that selects BOTH the outbound AND return leg):`);
+      parts.push(`\nFLIGHT OPTIONS (choose ONE letter — selects BOTH outbound AND return):`);
       parts.push(...real.flights.map(f => flightLine(f, totalPax)));
-      parts.push(`Use the EXACT airline name, flight number, and departure/arrival times from your chosen option in the itinerary JSON.`);
+      parts.push(`Copy EXACT airline, flight number, and times into the JSON flight activities.`);
     } else {
-      parts.push(`\nNo live flight data — search for realistic flights between airports near ${form.departure_city} and ${form.destination_city}. Be flexible ±3 days on dates if needed.`);
+      parts.push(`\nNo live flight data — research realistic flights ${form.departure_city}→${form.destination_city} around ${dates[0]}.`);
     }
 
     if (real.hotels.length > 0) {
-      parts.push(`\nHOTEL OPTIONS (choose ONE for the ${nights} nights):`);
+      parts.push(`\nHOTEL OPTIONS (choose ONE for ${nights} nights):`);
       parts.push(...real.hotels.map(h => hotelLine(h)));
-      parts.push(`Use the EXACT hotel name and nightly price from your chosen option.`);
+      parts.push(`Copy EXACT hotel name and nightly price into the JSON accommodation activity.`);
     } else {
-      parts.push(`\nNo live hotel data — search for realistic ${comfortName.toLowerCase()}-tier accommodation in ${form.destination_city}.`);
+      parts.push(`\nNo live hotel data — research a realistic ${comfortName.toLowerCase()}-tier hotel in ${form.destination_city}.`);
+    }
+
+    if (hasPOI) {
+      parts.push(`\nVERIFIED ATTRACTIONS — prioritize these real venues for sightseeing/activity slots:`);
+      parts.push(real.poi!.map(p => `  • ${p.name} (${p.category})`).join("\n"));
     }
 
     realSection = parts.join("\n");
   } else {
-    realSection = `\n═══ NO LIVE API DATA ═══\nSearch for actual flights and accommodation for this route and dates. Be specific with real options.`;
+    realSection = `\n═══ NO LIVE API DATA ═══\nResearch actual flights, hotels, and top attractions for this route and dates.`;
   }
 
   return `You are a travel planning AI. Create a highly personalized, realistic, and well-researched travel itinerary.
@@ -438,12 +535,10 @@ Today's date: ${today}
 # GROUP PROFILE
 ${groupNote}
 
-# RESEARCH — use your search capability to find:
-- Visa/entry requirements for ${form.passport_country} passport holders entering ${form.destination_city} — note this in the accommodation check-in activity
-- Current weather and seasonal conditions in ${form.destination_city} around ${dates[0]} — adjust outdoor activities accordingly
-- Trending, highly-rated, and locally-loved attractions, restaurants, and experiences in ${form.destination_city}
-- Local transport options and typical prices (metro, bus, taxi, rideshare, airport transfers)${real?.flights.length ? "" : `\n- Actual flights between airports near ${form.departure_city} and ${form.destination_city} around ${dates[0]} (±3 days flexible)`}${real?.hotels.length ? "" : `\n- ${comfortName}-tier accommodation options in ${form.destination_city}`}
-- Any travel advisories or practical entry tips for ${form.passport_country} citizens
+# RESEARCH — use web search for:
+- Visa/entry requirements for ${form.passport_country} passport holders entering ${form.destination_city}
+- Weather in ${form.destination_city} around ${dates[0]} — adjust outdoor activities
+- Local transport prices (metro, taxi, airport transfers)${hasPOI ? "" : `\n- Top-rated attractions, restaurants, and experiences in ${form.destination_city}`}${real?.flights.length ? "" : `\n- Flights ${form.departure_city}→${form.destination_city} around ${dates[0]}`}${real?.hotels.length ? "" : `\n- ${comfortName}-tier hotels in ${form.destination_city}`}
 ${realSection}
 
 # OUTPUT — return ONLY this JSON (no markdown, no explanation):
@@ -475,15 +570,32 @@ ${realSection}
           "time": "HH:MM",
           "name": "<specific real venue or event name>",
           "type": "<flight|transport|accommodation|dining|sightseeing|activity|shopping|cafe>",
+          "subtype": "<for transport: flight|train|bus|taxi|ferry|metro — for food: restaurant|cafe|bar|street_food>",
           "duration": "<e.g. 2h 30m>",
-          "location": "<venue name or neighborhood>",
+          "location": "<city district or neighborhood>",
+          "address": "<full street address>",
           "cost": <per-person USD, 0 if free>,
-          "notes": "<practical tip, visa note, or booking advice>",
-          "rating": <0-5 or omit>,
-          "booking_url": "<direct booking URL or omit>",
-          "image_url": "<search for the venue's real hero image — use the main photo from its official site, Wikipedia, TripAdvisor, or Booking.com listing; only omit if none found>",
-          "address": "<street address or omit>",
-          "website": "<venue website or omit>"
+          "notes": "<practical tip, visa note, booking advice, or opening hours>",
+          "rating": <real venue rating 1-5 if known>,
+          "booking_url": "<direct booking or tickets URL>",
+          "image_url": "<real hero image from official site, Wikipedia, or TripAdvisor — required>",
+          "opening_hours": "<e.g. 09:00-18:00 or omit if not applicable>",
+          "airline": "<for flights only — exact airline name>",
+          "flight_number": "<for flights only — e.g. BA123>",
+          "flight_class": "<for flights only — economy|premium_economy|business|first>",
+          "origin": "<for flights only — departure airport name>",
+          "destination_airport": "<for flights only — arrival airport name>",
+          "stars": <for accommodation only — hotel star rating 1-5>,
+          "checkin_time": "<for accommodation check-in only — HH:MM>",
+          "checkout_time": "<for accommodation check-in only — HH:MM for checkout>",
+          "nights": <for accommodation check-in only — number of nights>,
+          "cost_per_night": <for accommodation check-in only — per night USD>,
+          "breakfast_included": <for accommodation only — true or false>,
+          "cuisine": "<for dining/cafe only — e.g. French, Japanese>",
+          "reservation_required": <for dining only — true or false>,
+          "tickets_required": <for sightseeing/activity — true or false>,
+          "operator": "<for non-flight transport only — e.g. Eurostar>",
+          "arrival_station": "<for non-flight transport only>"
         }
       ]
     }
@@ -497,10 +609,59 @@ ${realSection}
 3. Include accommodation check-in day 1 (after flight) and check-out day ${numDays} (before return flight)
 4. 4–6 activities per day, times in 24h HH:MM, strictly increasing within each day
 5. All costs per person in USD, realistic for ${form.destination_city} at comfort level ${form.comfort_level}/5
-6. Group activities geographically — cluster nearby attractions to minimize unnecessary travel
-7. Use real venue names, real addresses, and real booking URLs where possible
-8. Adapt all activities to the group type: ${form.group_type}
-9. No markdown fences, no text outside the JSON`;
+6. Group activities geographically — cluster nearby attractions to minimize travel time
+7. Fill ALL type-specific fields for each activity — airline+flight_number for flights, stars+checkin_time+nights+cost_per_night for hotels, cuisine+reservation_required for dining, etc.
+8. Every activity MUST have image_url (real photo from official site or Wikipedia), address, and notes
+9. Adapt all activities to the group type: ${form.group_type}
+10. No markdown fences, no text outside the JSON`;
+}
+
+// ─── Regen Day Prompt ─────────────────────────────────────────────────────────
+
+function buildRegenDayPrompt(req: RegenDayRequest): string {
+  const comfort = req.comfort_level ?? 3;
+  const comfortName = COMFORT_NAMES[comfort - 1] ?? "Standard";
+  const existingNote = req.existingActivities?.length
+    ? `\nAlready planned on other days (avoid duplicates): ${req.existingActivities.join(", ")}`
+    : "";
+  return `You are a travel planning AI. Generate a fresh set of activities for a single day of an existing trip.
+
+# DAY TO REGENERATE
+- Day ${req.dayIndex} — Date: ${req.dayDate}
+- Destination: ${req.destination}
+- Travelers: ${req.travelers}
+- Comfort level: ${comfort}/5 (${comfortName})${existingNote}
+
+# OUTPUT — return ONLY this JSON (no markdown, no explanation):
+{
+  "activities": [
+    {
+      "time": "HH:MM",
+      "name": "<specific real venue or event name>",
+      "type": "<dining|sightseeing|activity|shopping|cafe|transport>",
+      "subtype": "<optional>",
+      "duration": "<e.g. 2h>",
+      "location": "<neighborhood>",
+      "address": "<full street address>",
+      "cost": <per-person USD, 0 if free>,
+      "notes": "<practical tip or booking advice>",
+      "image_url": "<real photo URL from official site or Wikipedia>",
+      "booking_url": "<optional direct link>",
+      "cuisine": "<for dining/cafe only>",
+      "reservation_required": <for dining — true or false>,
+      "tickets_required": <for sightseeing/activity — true or false>,
+      "opening_hours": "<HH:MM-HH:MM if applicable>"
+    }
+  ]
+}
+
+# RULES
+1. 4-6 activities, times in 24h HH:MM strictly increasing starting around 08:00-09:00
+2. Do NOT include flights or hotel check-in/check-out (those are managed separately)
+3. Mix activity types: sightseeing, local dining, transport, experiences
+4. Use real specific venue names in ${req.destination} — no generic placeholders
+5. Every activity needs image_url, address, and notes
+6. No markdown fences, no text outside the JSON`;
 }
 
 // ─── xAI ──────────────────────────────────────────────────────────────────────
@@ -600,6 +761,22 @@ serve(async (req) => {
   try {
     const body = await req.json();
     requestId = body.requestId ?? null;
+
+    // ── Regen Day mode: regenerate a single day without full API fetch ────────
+    if (body.regenDay) {
+      const regenReq = body.regenDay as RegenDayRequest;
+      const prompt = buildRegenDayPrompt(regenReq);
+      const raw = await callXAI(prompt);
+      const parsed = parseAIJSON(raw);
+      const activities: any[] = Array.isArray(parsed.activities) ? parsed.activities : [];
+      for (const act of activities) {
+        if (!act.image_url?.startsWith("http")) act.image_url = activityImageUrl(act.type ?? "");
+      }
+      return new Response(JSON.stringify({ activities }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const form: TripFormData = body.formData;
     if (!form) throw new Error("Missing formData");
 
@@ -624,8 +801,8 @@ serve(async (req) => {
         ]);
         console.log(`Resolved: ${origin?.iataCode ?? "?"} → ${destination?.iataCode ?? "?"}`);
 
-        // Flights + Hotels in parallel
-        const [flights, hotels] = await Promise.all([
+        // Flights + Hotels + POI in parallel
+        const [duffelFlights, hotels, poi] = await Promise.all([
           hasDuffel && origin && destination
             ? fetchFlights(
                 origin.iataCode, destination.iataCode,
@@ -642,7 +819,22 @@ serve(async (req) => {
                 token, supabase, destination.dbId,
               ).catch((e: Error) => { console.error("Amadeus hotels:", e.message); return [] as HotelOption[]; })
             : Promise.resolve([] as HotelOption[]),
+
+          token && destination && destination.lat && destination.lng
+            ? fetchPOIs(destination.lat, destination.lng, token)
+                .catch((e: Error) => { console.error("Amadeus POI:", e.message); return [] as POIOption[]; })
+            : Promise.resolve([] as POIOption[]),
         ]);
+
+        // If Duffel returned nothing, try Travelpayouts cached prices as fallback
+        let flights = duffelFlights;
+        if (flights.length === 0 && origin && destination && TRAVELPAYOUTS_TOKEN) {
+          flights = await fetchFlightsTravelpayouts(
+            origin.iataCode, destination.iataCode,
+            dates[0], form.travelers, form.kids,
+          ).catch((e: Error) => { console.error("Travelpayouts:", e.message); return [] as RoundTripOption[]; });
+          if (flights.length > 0) console.log(`Using Travelpayouts fallback: ${flights.length} cached price options`);
+        }
 
         // Cache flight routes (fire & forget)
         for (const f of flights) {
@@ -660,8 +852,8 @@ serve(async (req) => {
           }).then(() => {}).catch(() => {});
         }
 
-        real = { origin, destination, flights, hotels };
-        console.log(`Real data: ${flights.length} flight options, ${hotels.length} hotel options`);
+        real = { origin, destination, flights, hotels, poi };
+        console.log(`Real data: ${flights.length} flights, ${hotels.length} hotels, ${poi.length} POIs`);
       } catch (e) {
         console.error("Real data phase failed, falling back to AI-only:", e);
       }

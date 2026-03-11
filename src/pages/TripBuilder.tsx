@@ -15,7 +15,7 @@ import {
   Calendar as CalendarIcon, Users, ArrowLeft, GripVertical, LogOut, Link2,
   ChevronDown, Upload, X as XIcon, Undo2, Redo2,
   AlertCircle, FileUp, FileDown, Printer, CopyPlus, Filter,
-  ThumbsUp, ThumbsDown, DollarSign, Receipt,
+  ThumbsUp, ThumbsDown, DollarSign, Receipt, RefreshCw,
 } from "lucide-react";
 import { usePreferences } from "@/context/PreferencesContext";
 import { toast } from "sonner";
@@ -377,6 +377,12 @@ const TripBuilder = () => {
   // Costs by day toggle
   const [showDayCosts, setShowDayCosts] = useState(false);
 
+  // Insert-between index for the "+" between cards
+  const [insertAtIndex, setInsertAtIndex] = useState<number | null>(null);
+
+  // Regenerate day loading state (stores dayId being regenerated, null = idle)
+  const [regenDayLoading, setRegenDayLoading] = useState<string | null>(null);
+
   // Track width
   useEffect(() => {
     const updateWidth = () => {
@@ -397,9 +403,10 @@ const TripBuilder = () => {
     setTrip((p) => ({ ...p, days: p.days.filter((d) => d.id !== dayId) }));
   };
 
-  const openAddActivity = (dayId: string) => {
+  const openAddActivity = (dayId: string, insertAt?: number) => {
     setEditingDayId(dayId);
     setEditingIndex(-1);
+    setInsertAtIndex(insertAt ?? null);
     setEditingActivity(createEmptyActivity());
     setDialogOpen(true);
   };
@@ -441,8 +448,10 @@ const TripBuilder = () => {
       const days = p.days.map((d) => {
         if (d.id !== editingDayId) return d;
         const acts = [...d.activities];
-        if (editingIndex === -1) acts.push(a);
-        else acts[editingIndex] = a;
+        if (editingIndex === -1) {
+          if (insertAtIndex !== null) acts.splice(insertAtIndex, 0, a);
+          else acts.push(a);
+        } else acts[editingIndex] = a;
         return { ...d, activities: sortByTime(acts) };
       });
 
@@ -799,6 +808,58 @@ const TripBuilder = () => {
       navigate("/profile");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to leave trip");
+    }
+  };
+
+  const handleRegenDay = async (dayId: string, dayIndex: number) => {
+    const day = trip.days[dayIndex];
+    if (!day) return;
+    setRegenDayLoading(dayId);
+    toast.info(`Regenerating Day ${dayIndex + 1}…`);
+    try {
+      const existingActivityNames = trip.days
+        .filter((_, i) => i !== dayIndex)
+        .flatMap(d => d.activities.map(a => a.name))
+        .filter(Boolean)
+        .slice(0, 20);
+
+      const { data, error } = await supabase.functions.invoke("generate-itinerary", {
+        body: {
+          regenDay: {
+            dayIndex: dayIndex + 1,
+            dayDate: day.date || `Day ${dayIndex + 1}`,
+            destination: trip.destination || "the destination",
+            travelers: trip.travelers,
+            existingActivities: existingActivityNames,
+          },
+        },
+      });
+
+      if (error) throw error;
+      if (!data?.activities?.length) throw new Error("No activities returned");
+
+      // Preserve flights and hotel check-in/out; replace everything else
+      const preserved = day.activities.filter(a =>
+        a.type === "flight" ||
+        (a.type === "transport" && a.subtype === "flight") ||
+        a.type === "accommodation"
+      );
+      const newActivities: BuilderActivity[] = (data.activities as BuilderActivity[]).map(a => ({
+        ...a,
+        id: generateId(),
+      }));
+
+      setTrip(p => ({
+        ...p,
+        days: p.days.map(d =>
+          d.id === dayId ? { ...d, activities: sortByTime([...preserved, ...newActivities]) } : d
+        ),
+      }));
+      toast.success(`Day ${dayIndex + 1} regenerated!`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to regenerate day");
+    } finally {
+      setRegenDayLoading(null);
     }
   };
 
@@ -1569,6 +1630,21 @@ const TripBuilder = () => {
                           />
                         </PopoverContent>
                       </Popover>
+                      {isOwner !== false && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="w-6 h-6 text-muted-foreground hover:text-primary shrink-0"
+                          onClick={(e) => { e.stopPropagation(); handleRegenDay(pos.day.id, dayIndex); }}
+                          disabled={regenDayLoading === pos.day.id}
+                          title="Regenerate this day with AI"
+                        >
+                          {regenDayLoading === pos.day.id
+                            ? <span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
+                            : <RefreshCw className="w-3 h-3" />
+                          }
+                        </Button>
+                      )}
                       {(!isFirst || trip.days.length > 1) && (
                         <Button variant="ghost" size="icon" className="w-6 h-6 text-destructive hover:bg-destructive/10 shrink-0" onClick={() => confirmRemoveDay(pos.day.id)}>
                           <Trash2 className="w-3 h-3" />
@@ -1581,7 +1657,7 @@ const TripBuilder = () => {
 
                 {/* Activity rows */}
                 {rowLayouts.map((row) => (
-                  <div key={`row-${row.rowIndex}`} className={cn("absolute flex items-center", row.isRTL && "flex-row-reverse")} style={{ top: row.top, left: row.rowLeft, width: row.rowWidth }}>
+                  <div key={`row-${row.rowIndex}`} className={cn("absolute flex items-center group/row", row.isRTL && "flex-row-reverse")} style={{ top: row.top, left: row.rowLeft, width: row.rowWidth }}>
                     {row.slots.map((slot, slotIndex) => {
                       const isAdd = slot === "add";
                       // Show transport/gap before any slot (including add) after the first
@@ -1631,7 +1707,21 @@ const TripBuilder = () => {
                         return undefined;
                       })();
 
-                      const gap = showTransport && <div className="shrink-0" style={{ width: GAP }} />;
+                      const gap = showTransport ? (
+                        isAdd ? (
+                          <div className="shrink-0" style={{ width: GAP }} />
+                        ) : (
+                          <div className="relative shrink-0 flex items-center justify-center" style={{ width: GAP }}>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); openAddActivity(currentDayId, globalActIndex); }}
+                              className="absolute z-30 w-5 h-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-md opacity-0 group-hover/row:opacity-100 hover:scale-125 transition-all duration-150"
+                              title="Insert activity here"
+                            >
+                              <Plus className="w-3 h-3" />
+                            </button>
+                          </div>
+                        )
+                      ) : null;
 
                       return (
                         <div
@@ -1944,7 +2034,7 @@ const TripBuilder = () => {
       {/* Activity Dialog */}
       <ActivityDialog
         open={dialogOpen}
-        onOpenChange={setDialogOpen}
+        onOpenChange={(v) => { setDialogOpen(v); if (!v) setInsertAtIndex(null); }}
         activity={editingActivity}
         onSave={handleSaveActivity}
         isEditing={editingIndex >= 0}
