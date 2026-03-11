@@ -103,6 +103,7 @@ interface POIOption {
 
 interface ActivityOption {
   id: string;
+  refId: string;      // short prompt reference like "img001" — AI copies this into activity_ref_id
   name: string;
   description: string;
   category: string;
@@ -500,8 +501,9 @@ async function fetchActivities(lat: number, lng: number, token: string): Promise
   if (!data?.length) return [];
   return (data as any[])
     .filter((a: any) => a.name && a.pictures?.[0]?.url)
-    .map((a: any): ActivityOption => ({
+    .map((a: any, i: number): ActivityOption => ({
       id: a.id ?? generateId(),
+      refId: `img${String(i + 1).padStart(3, "0")}`,  // e.g. "img001" — referenced by AI in activity_ref_id
       name: a.name,
       description: a.shortDescription ?? "",
       category: (a.category ?? "SIGHTSEEING").toLowerCase(),
@@ -614,15 +616,23 @@ function resolveActivityImage(act: any, hotelOptions: HotelOption[], activityOpt
 
   // Match against Amadeus activity pictures (sightseeing, dining, experiences)
   const isVisitType = ["sightseeing", "activity", "shopping", "dining", "cafe"].includes(act.type ?? "");
-  if (isVisitType && activityOptions.length > 0 && act.name) {
-    const name = act.name.toLowerCase();
-    const matched = activityOptions.find(ao =>
-      ao.pictureUrl && (
-        name.includes(ao.name.toLowerCase().slice(0, 12)) ||
-        ao.name.toLowerCase().includes(name.slice(0, 12))
-      )
-    );
-    if (matched?.pictureUrl) return matched.pictureUrl;
+  if (isVisitType && activityOptions.length > 0) {
+    // 1. Exact reference ID match (AI copied activity_ref_id from our prompt list — most reliable)
+    if (act.activity_ref_id) {
+      const byRef = activityOptions.find(ao => ao.refId === act.activity_ref_id);
+      if (byRef?.pictureUrl) return byRef.pictureUrl;
+    }
+    // 2. Fuzzy name match as fallback (catches cases where AI used the name but not the ref)
+    if (act.name) {
+      const name = act.name.toLowerCase();
+      const byName = activityOptions.find(ao =>
+        ao.pictureUrl && (
+          name.includes(ao.name.toLowerCase().slice(0, 12)) ||
+          ao.name.toLowerCase().includes(name.slice(0, 12))
+        )
+      );
+      if (byName?.pictureUrl) return byName.pictureUrl;
+    }
   }
 
   return activityImageUrl(act.type ?? "");
@@ -976,15 +986,16 @@ function buildPrompt(form: TripFormData, real: RealData | null): string {
   }
 
   if (hasActivities) {
-    parts.push(`\nVERIFIED BOOKABLE ACTIVITIES — prefer these for sightseeing/activity/dining slots:`);
+    parts.push(`\nVERIFIED BOOKABLE ACTIVITIES — prefer these for sightseeing/activity/dining slots.`);
+    parts.push(`  ⚠️  When you use one of these, copy its [imgXXX] code into "activity_ref_id" — this loads the real photo.`);
     parts.push(real!.activities.slice(0, 15).map(a => {
       const price = a.price > 0 ? ` — $${a.price.toFixed(0)} pp ${a.currency}` : " — free";
       const rating = a.rating > 0 ? ` ★${a.rating}` : "";
       const link = a.bookingLink ? ` — book: ${a.bookingLink}` : "";
       const desc = a.description ? ` (${a.description.slice(0, 60)}${a.description.length > 60 ? "…" : ""})` : "";
-      return `  • ${a.name} [${a.category}]${price}${rating}${link}${desc}`;
+      return `  [${a.refId}] ${a.name} [${a.category}]${price}${rating}${link}${desc}`;
     }).join("\n"));
-    parts.push(`  Use exact names, prices, and booking_url from this list where applicable.`);
+    parts.push(`  Use exact names, prices, and booking_url from this list. Set activity_ref_id to the [imgXXX] code.`);
   } else if (hasPOI) {
     parts.push(`\nVERIFIED ATTRACTIONS:`);
     parts.push(real!.poi.map(p => `  • ${p.name} (${p.category})`).join("\n"));
@@ -1114,7 +1125,8 @@ ${realSection}
           "reservation_required": <for dining — true|false>,
           "tickets_required": <for sightseeing/activity — true|false>,
           "operator": "<for non-flight transport — e.g. Eurostar, Uber>",
-          "arrival_station": "<for non-flight transport — destination stop/station>"
+          "arrival_station": "<for non-flight transport — destination stop/station>",
+          "activity_ref_id": "<copy [imgXXX] from the verified activities list — loads real photo; omit if not from list>"
         }
       ]
     }
