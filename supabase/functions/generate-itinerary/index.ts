@@ -894,7 +894,17 @@ function postProcessItinerary(
 
   } else {
     // No real hotel data: pair AI accommodation check-in and checkout cards
-    const tripNights = tripDates.length - 1;
+    // Compute actual hotel nights from flight dates when available, otherwise
+    // subtract 2 from trip length (1 travel day each way) as a heuristic.
+    let tripNights = tripDates.length - 1;
+    if (bestFlight) {
+      const arrDate = bestFlight.outSlice.segments[bestFlight.outSlice.segments.length - 1].arrAt.slice(0, 10);
+      const depDate = bestFlight.retSlice.segments[0].depAt.slice(0, 10);
+      const actual = nightsBetween(arrDate, depDate);
+      if (actual > 0) tripNights = actual;
+    } else if (tripNights > 2) {
+      tripNights = tripNights - 2; // estimate: 1 travel day each way
+    }
     const allActs = dailyItinerary.flatMap(d => d.activities ?? []);
     // Only treat cards as check-ins if they don't look like checkouts
     const checkins = allActs.filter((a: any) =>
