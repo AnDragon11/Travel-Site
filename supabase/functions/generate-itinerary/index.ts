@@ -874,13 +874,25 @@ function postProcessItinerary(
 
   // ── Step 3: Inject real hotel cards OR bond AI accommodation cards ──
   if (bestHotel) {
-    const { checkin, checkout } = buildHotelCards(bestHotel);
+    // Determine which day the outbound arrival lands on (could be Day 2 for overnight flights)
+    const lastOutSeg = bestFlight!.outSlice.segments[bestFlight!.outSlice.segments.length - 1];
+    const arrDate = lastOutSeg.arrAt.slice(0, 10);
+    const arrDayIdx = Math.max(0, tripDates.indexOf(arrDate));
+    const checkinDayActs: any[] = dailyItinerary[arrDayIdx].activities;
 
-    // Insert check-in on Day 1, right after the last outbound flight arrival card
-    const day1Acts: any[] = dailyItinerary[0].activities;
-    const lastFlightIdx = day1Acts.reduce((last: number, a: any, i: number) =>
+    // Derive checkout time: 2h before return flight departure, minimum 10:00
+    const firstRetSeg = bestFlight!.retSlice.segments[0];
+    const retDepTime = fmtTime(firstRetSeg.depAt); // e.g. "18:00"
+    const [rh, rm] = retDepTime.split(":").map(Number);
+    const checkoutMins = Math.max(10 * 60, rh * 60 + rm - 120); // 2h before, min 10:00
+    const checkoutTime = `${String(Math.floor(checkoutMins / 60)).padStart(2, "0")}:${String(checkoutMins % 60).padStart(2, "0")}`;
+    const { checkin, checkout } = buildHotelCards(bestHotel);
+    checkout.time = checkoutTime;
+
+    // Insert check-in right after the last outbound flight card on the arrival day
+    const lastFlightIdx = checkinDayActs.reduce((last: number, a: any, i: number) =>
       (a.type === "flight" || (a.type === "transport" && a.subtype === "flight")) ? i : last, -1);
-    day1Acts.splice(lastFlightIdx + 1, 0, checkin);
+    checkinDayActs.splice(lastFlightIdx + 1, 0, checkin);
 
     // Insert checkout on last day, before the first return flight departure card
     const lastDayActs: any[] = dailyItinerary[dailyItinerary.length - 1].activities;
@@ -1006,8 +1018,20 @@ function buildPrompt(form: TripFormData, real: RealData | null): string {
   const parts: string[] = ["\n═══ REAL API DATA ═══"];
 
   if (hasRealFlights) {
-    parts.push(`\nFLIGHTS — pre-selected option A (cheapest). DO NOT include flight activities in your JSON — they are auto-injected from real booking data.`);
-    parts.push(`Pre-selected:\n${flightLine(bestFlight!)}`);
+    const bf = real!.flights[0];
+    const lastOutSeg = bf.outSlice.segments[bf.outSlice.segments.length - 1];
+    const firstRetSeg = bf.retSlice.segments[0];
+    const arrDate = lastOutSeg.arrAt.slice(0, 10);
+    const arrTime = fmtTime(lastOutSeg.arrAt);
+    const retDepTime = fmtTime(firstRetSeg.depAt);
+    const arrDayNum = dates.indexOf(arrDate) + 1; // 1-based day number
+    const arrNote = arrDayNum > 1
+      ? `Outbound arrives Day ${arrDayNum} (${arrDate}) at ${arrTime} local — do NOT schedule activities on Day ${arrDayNum} before ${arrTime}.`
+      : `Outbound arrives Day 1 at ${arrTime} local — do NOT schedule activities on Day 1 before ${arrTime}.`;
+    parts.push(`\nFLIGHTS — auto-injected, DO NOT include flight activities in your JSON.`);
+    parts.push(`  ⚠️  ${arrNote}`);
+    parts.push(`  ⚠️  Return departs Day ${numDays} at ${retDepTime} local — do NOT schedule activities on Day ${numDays} after ${retDepTime}.`);
+    parts.push(`Pre-selected:\n${flightLine(bf)}`);
     if (real!.flights.length > 1) {
       parts.push(`Other options (reference only):\n${real!.flights.slice(1).map(f => flightLine(f)).join("\n")}`);
     }
