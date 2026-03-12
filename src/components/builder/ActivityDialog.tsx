@@ -314,13 +314,17 @@ export const ActivityDialog = ({
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1.5">
                       <Label className="text-xs">Departure Airport</Label>
-                      <Input value={form.location} onChange={(e) => {
+                      <Input value={form.is_arrival ? (form.origin || "") : form.location} onChange={(e) => {
                         const loc = e.target.value;
-                        const updates: Partial<BuilderActivity> = { location: loc, origin: loc };
-                        if (!form.is_arrival && (!form.name || /^Departing from /i.test(form.name))) {
-                          updates.name = loc ? `Departing from ${loc}` : "";
+                        if (form.is_arrival) {
+                          updateForm({ origin: loc });
+                        } else {
+                          const updates: Partial<BuilderActivity> = { location: loc, origin: loc };
+                          if (!form.name || /^Departing from /i.test(form.name)) {
+                            updates.name = loc ? `Departing from ${loc}` : "";
+                          }
+                          updateForm(updates);
                         }
-                        updateForm(updates);
                       }} placeholder="e.g. London Heathrow (LHR)" />
                     </div>
                     <div className="space-y-1.5">

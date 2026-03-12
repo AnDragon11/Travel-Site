@@ -799,14 +799,29 @@ function postProcessItinerary(
   }
 
   // ── Step 2: Inject real flight cards OR create arrival twins from AI cards ──
-  if (bestFlight && dailyItinerary.length > 0) {
-    // Outbound: inject at start of Day 1 (before any other activities)
-    const outCards = buildFlightCards(bestFlight.outSlice, bestFlight.cabinClass, false);
-    // Charge the per-person outbound cost on the first departure card
-    if (outCards.length > 0) outCards[0].cost = bestFlight.pricePerPerson / 2;
-    dailyItinerary[0].activities = [...outCards, ...dailyItinerary[0].activities];
+  const tripDates = tripDays(form); // ["2026-05-11", ..., "2026-05-24"]
 
-    // Return: inject at end of last day (after any other activities)
+  if (bestFlight && dailyItinerary.length > 0) {
+    const outCards = buildFlightCards(bestFlight.outSlice, bestFlight.cabinClass, false);
+    if (outCards.length > 0) outCards[0].cost = bestFlight.pricePerPerson / 2;
+
+    // Put all outbound cards on Day 1 first, then move the final arrival card to its
+    // correct day if it lands on a different calendar date (e.g. overnight flight).
+    dailyItinerary[0].activities = [...outCards, ...dailyItinerary[0].activities];
+    const finalOutArr = outCards[outCards.length - 1];
+    if (finalOutArr?.is_arrival) {
+      const lastSeg = bestFlight.outSlice.segments[bestFlight.outSlice.segments.length - 1];
+      const arrDate = lastSeg.arrAt.slice(0, 10);
+      const arrDayIdx = tripDates.indexOf(arrDate);
+      if (arrDayIdx > 0 && arrDayIdx < dailyItinerary.length) {
+        // Remove from Day 1
+        dailyItinerary[0].activities = dailyItinerary[0].activities.filter((a: any) => a !== finalOutArr);
+        // Prepend to the correct day
+        dailyItinerary[arrDayIdx].activities = [finalOutArr, ...dailyItinerary[arrDayIdx].activities];
+      }
+    }
+
+    // Return: inject at end of last day
     const retCards = buildFlightCards(bestFlight.retSlice, bestFlight.cabinClass, true);
     if (retCards.length > 0) retCards[0].cost = bestFlight.pricePerPerson / 2;
     const lastDay = dailyItinerary[dailyItinerary.length - 1];
@@ -879,9 +894,14 @@ function postProcessItinerary(
 
   } else {
     // No real hotel data: pair AI accommodation check-in and checkout cards
+    const tripNights = tripDates.length - 1;
     const allActs = dailyItinerary.flatMap(d => d.activities ?? []);
-    const checkins = allActs.filter((a: any) => a.type === "accommodation" && !a.is_checkout);
+    // Only treat cards as check-ins if they don't look like checkouts
+    const checkins = allActs.filter((a: any) =>
+      a.type === "accommodation" && !a.is_checkout && !/check.?out/i.test(a.name ?? ""));
     for (const ci of checkins) {
+      // Ensure nights is always populated
+      if (!ci.nights || ci.nights <= 0) ci.nights = tripNights;
       if (!ci.id) ci.id = generateId();
       const rawName = (ci.name ?? "").replace(/^Check-in:\s*/i, "").trim();
       ci.name = `Check-in: ${rawName}`;
