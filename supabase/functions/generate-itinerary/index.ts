@@ -874,18 +874,22 @@ function postProcessItinerary(
 
   // ── Step 3: Inject real hotel cards OR bond AI accommodation cards ──
   if (bestHotel) {
-    // Determine which day the outbound arrival lands on (could be Day 2 for overnight flights)
-    const lastOutSeg = bestFlight!.outSlice.segments[bestFlight!.outSlice.segments.length - 1];
-    const arrDate = lastOutSeg.arrAt.slice(0, 10);
-    const arrDayIdx = Math.max(0, tripDates.indexOf(arrDate));
+    // Determine check-in day from outbound arrival date (if Duffel data available)
+    let arrDayIdx = 0;
+    if (bestFlight) {
+      const lastOutSeg = bestFlight.outSlice.segments[bestFlight.outSlice.segments.length - 1];
+      arrDayIdx = Math.max(0, tripDates.indexOf(lastOutSeg.arrAt.slice(0, 10)));
+    }
     const checkinDayActs: any[] = dailyItinerary[arrDayIdx].activities;
 
     // Derive checkout time: 2h before return flight departure, minimum 10:00
-    const firstRetSeg = bestFlight!.retSlice.segments[0];
-    const retDepTime = fmtTime(firstRetSeg.depAt); // e.g. "18:00"
-    const [rh, rm] = retDepTime.split(":").map(Number);
-    const checkoutMins = Math.max(10 * 60, rh * 60 + rm - 120); // 2h before, min 10:00
-    const checkoutTime = `${String(Math.floor(checkoutMins / 60)).padStart(2, "0")}:${String(checkoutMins % 60).padStart(2, "0")}`;
+    let checkoutTime = "11:00";
+    if (bestFlight) {
+      const firstRetSeg = bestFlight.retSlice.segments[0];
+      const [rh, rm] = fmtTime(firstRetSeg.depAt).split(":").map(Number);
+      const checkoutMins = Math.max(10 * 60, rh * 60 + rm - 120);
+      checkoutTime = `${String(Math.floor(checkoutMins / 60)).padStart(2, "0")}:${String(checkoutMins % 60).padStart(2, "0")}`;
+    }
     const { checkin, checkout } = buildHotelCards(bestHotel);
     checkout.time = checkoutTime;
 
@@ -1294,7 +1298,7 @@ async function callXAI(prompt: string): Promise<string> {
         { role: "user", content: prompt },
       ],
       temperature: 0.7,
-      max_tokens: 16000,
+      max_tokens: 20000,
       response_format: { type: "json_object" },
     }),
     signal: AbortSignal.timeout(55_000),
