@@ -207,6 +207,7 @@ async function amadeusToken(): Promise<string> {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: `grant_type=client_credentials&client_id=${AMADEUS_CLIENT_ID}&client_secret=${AMADEUS_CLIENT_SECRET}`,
+    signal: AbortSignal.timeout(5_000),
   });
   if (!r.ok) throw new Error(`Amadeus auth ${r.status}: ${await r.text()}`);
   return (await r.json()).access_token;
@@ -238,7 +239,7 @@ async function resolveCity(
 
   const r = await fetch(
     `${AMADEUS_BASE}/v1/reference-data/locations?subType=CITY&keyword=${encodeURIComponent(cityName)}&page[limit]=3`,
-    { headers: { Authorization: `Bearer ${token}` } },
+    { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(4_000) },
   );
   if (!r.ok) return null;
   const { data } = await r.json();
@@ -293,7 +294,7 @@ async function fetchHotels(
   // Step 1: hotel list by city
   const listR = await fetch(
     `${AMADEUS_BASE}/v1/reference-data/locations/hotels/by-city?cityCode=${cityCode}&ratings=${starRatings(comfortLevel)}&hotelSource=ALL`,
-    { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(10_000) },
+    { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(5_000) },
   );
   if (!listR.ok) return [];
   const { data: hotelList } = await listR.json();
@@ -304,7 +305,7 @@ async function fetchHotels(
   // Step 2: live offers
   const offR = await fetch(
     `${AMADEUS_BASE}/v3/shopping/hotel-offers?hotelIds=${hotelIds}&adults=${adults}&checkInDate=${checkin}&checkOutDate=${checkout}&roomQuantity=1&currency=USD&bestRateOnly=true`,
-    { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(10_000) },
+    { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(5_000) },
   );
   if (!offR.ok) return [];
   const { data: offerData } = await offR.json();
@@ -405,7 +406,7 @@ async function fetchFlights(
   const totalPax = adults + kids;
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 12_000);
+  const timer = setTimeout(() => controller.abort(), 8_000);
 
   let resp: Response;
   try {
@@ -479,7 +480,7 @@ async function fetchFlights(
 async function fetchPOIs(lat: number, lng: number, token: string): Promise<POIOption[]> {
   const r = await fetch(
     `${AMADEUS_BASE}/v1/reference-data/locations/pois?latitude=${lat.toFixed(4)}&longitude=${lng.toFixed(4)}&radius=20&page[limit]=15`,
-    { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(8_000) },
+    { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(4_000) },
   );
   if (!r.ok) return [];
   const { data } = await r.json();
@@ -494,7 +495,7 @@ async function fetchPOIs(lat: number, lng: number, token: string): Promise<POIOp
 async function fetchActivities(lat: number, lng: number, token: string): Promise<ActivityOption[]> {
   const r = await fetch(
     `${AMADEUS_BASE}/v1/shopping/activities?latitude=${lat.toFixed(4)}&longitude=${lng.toFixed(4)}&radius=20&page[limit]=20`,
-    { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(8_000) },
+    { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(4_000) },
   );
   if (!r.ok) return [];
   const { data } = await r.json();
