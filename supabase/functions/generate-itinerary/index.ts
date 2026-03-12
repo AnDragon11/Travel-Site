@@ -1119,18 +1119,16 @@ ${realSection}
           "subtype": "<transport: train|bus|taxi|ferry|metro  /  dining: restaurant|cafe|bar|street_food>",
           "duration": "<e.g. 2h>",
           "location": "<neighborhood or district>",
-          "address": "<full street address>",
           "cost": <per-person USD, 0 if free>,
-          "notes": "<practical tip, opening hours, booking advice>",
+          "notes": "<brief tip ≤8 words>",
           "rating": <real rating 1.0-5.0 if known, else omit>,
-          "booking_url": "<direct booking/ticket URL — include if from the Activities list above>",
-          "opening_hours": "<HH:MM-HH:MM if applicable>",
-          "cuisine": "<for dining/cafe — e.g. Italian, Japanese>",
+          "booking_url": "<direct booking URL — required if from Activities list, else omit>",
+          "cuisine": "<for dining/cafe only — e.g. Italian>",
           "reservation_required": <for dining — true|false>,
           "tickets_required": <for sightseeing/activity — true|false>,
-          "operator": "<for non-flight transport — e.g. Eurostar, Uber>",
-          "arrival_station": "<for non-flight transport — destination stop/station>",
-          "activity_ref_id": "<copy [imgXXX] from the verified activities list — loads real photo; omit if not from list>"
+          "operator": "<for non-flight transport — e.g. Eurostar>",
+          "arrival_station": "<for non-flight transport — destination stop>",
+          "activity_ref_id": "<copy [imgXXX] from verified activities list — omit if not from list>"
         }
       ]
     }
@@ -1142,13 +1140,12 @@ ${realSection}
 ${skipNote ? `0. ${skipNote}\n` : ""}1. ${hasRealFlights ? "Day 1 first non-flight activity should be airport transfer or arrival meal" : "Day 1 MUST start with outbound flight from " + form.departure_city}
 2. ${hasRealFlights ? "Last day last non-flight activity should be airport departure prep" : "Last day MUST end with return flight to " + form.departure_city}
 3. ${hasRealHotels ? "Do NOT include accommodation activities" : `Include check-in Day 1 (after flight) and check-out Day ${numDays} (before return flight)`}
-4. 4–6 activities per day (excluding auto-injected cards), times 24h HH:MM strictly increasing
+4. 3–5 activities per day (excluding auto-injected cards), times 24h HH:MM strictly increasing
 5. All activity costs per person in USD, realistic for ${form.destination_city} at comfort ${form.comfort_level}/5
 6. Cluster activities geographically to minimize travel time within each day
-7. Fill ALL type-specific fields: cuisine+reservation_required for dining, operator+arrival_station for non-flight transport, tickets_required+opening_hours for sightseeing
-8. Every activity MUST have full street address and practical notes
-9. Adapt to group type: ${form.group_type}
-10. No markdown fences, no text outside the JSON`;
+7. Fill type-specific fields: cuisine+reservation_required for dining, operator+arrival_station for non-flight transport, tickets_required for sightseeing
+8. Adapt to group type: ${form.group_type}
+9. No markdown fences, no text outside the JSON`;
 }
 
 // ─── Regen Day Prompt ─────────────────────────────────────────────────────────
@@ -1177,25 +1174,22 @@ function buildRegenDayPrompt(req: RegenDayRequest): string {
       "subtype": "<optional>",
       "duration": "<e.g. 2h>",
       "location": "<neighborhood>",
-      "address": "<full street address>",
       "cost": <per-person USD, 0 if free>,
-      "notes": "<practical tip or booking advice>",
-      "booking_url": "<optional direct link>",
+      "notes": "<brief tip ≤8 words>",
+      "booking_url": "<direct link if applicable>",
       "cuisine": "<for dining/cafe only>",
       "reservation_required": <for dining — true or false>,
-      "tickets_required": <for sightseeing/activity — true or false>,
-      "opening_hours": "<HH:MM-HH:MM if applicable>"
+      "tickets_required": <for sightseeing/activity — true or false>
     }
   ]
 }
 
 # RULES
-1. 4-6 activities, times in 24h HH:MM strictly increasing starting around 08:00-09:00
+1. 3-5 activities, times in 24h HH:MM strictly increasing starting around 08:00-09:00
 2. Do NOT include flights or hotel check-in/check-out (managed separately)
 3. Mix activity types: sightseeing, local dining, transport, experiences
 4. Use real specific venue names in ${req.destination} — no generic placeholders
-5. Every activity needs full street address and notes
-6. No markdown fences, no text outside the JSON`;
+5. No markdown fences, no text outside the JSON`;
 }
 
 // ─── xAI ──────────────────────────────────────────────────────────────────────
@@ -1214,9 +1208,10 @@ async function callXAI(prompt: string): Promise<string> {
         { role: "user", content: prompt },
       ],
       temperature: 0.7,
-      max_tokens: 8000,
+      max_tokens: 16000,
+      response_format: { type: "json_object" },
     }),
-    signal: AbortSignal.timeout(40_000),
+    signal: AbortSignal.timeout(55_000),
   });
   if (!r.ok) throw new Error(`xAI ${r.status}: ${await r.text()}`);
   const data = await r.json();
