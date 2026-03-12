@@ -1206,20 +1206,29 @@ function buildRegenDayPrompt(req: RegenDayRequest): string {
 // ─── xAI ──────────────────────────────────────────────────────────────────────
 
 async function callXAI(prompt: string, enableSearch = true): Promise<string> {
-  const r = await fetch("https://api.x.ai/v1/responses", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${XAI_API_KEY}` },
-    body: JSON.stringify({
-      model: XAI_MODEL,
-      input: [
-        { role: "system", content: "You are a travel planning AI. Respond with valid JSON only — no markdown, no prose." },
-        { role: "user", content: prompt },
-      ],
-      temperature: 0.7,
-      max_output_tokens: 8000,
-      ...(enableSearch ? { tools: [{ type: "web_search" }] } : {}),
-    }),
-  });
+  // Hard 50s timeout — edge function wall-clock limit is 60s; leave margin for pre/post processing
+  let r: Response;
+  try {
+    r = await fetch("https://api.x.ai/v1/responses", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${XAI_API_KEY}` },
+      body: JSON.stringify({
+        model: XAI_MODEL,
+        input: [
+          { role: "system", content: "You are a travel planning AI. Respond with valid JSON only — no markdown, no prose." },
+          { role: "user", content: prompt },
+        ],
+        temperature: 0.7,
+        max_output_tokens: 8000,
+        ...(enableSearch ? { tools: [{ type: "web_search" }] } : {}),
+      }),
+      signal: AbortSignal.timeout(50_000),
+    });
+  } catch (e: any) {
+    // Timeout or network error → fallback to chat/completions without web search (faster)
+    console.warn("Responses API timed out or failed, falling back to chat/completions:", e?.message ?? e);
+    return callXAIFallback(prompt, String(e));
+  }
   if (!r.ok) {
     const errText = await r.text();
     return callXAIFallback(prompt, errText);
@@ -1252,6 +1261,7 @@ async function callXAIFallback(prompt: string, originalError: string): Promise<s
       temperature: 0.7,
       max_tokens: 8000,
     }),
+    signal: AbortSignal.timeout(50_000),
   });
   if (!r.ok) throw new Error(`xAI ${r.status}: ${await r.text()}`);
   const data = await r.json();
@@ -1375,12 +1385,14 @@ serve(async (req) => {
     }
 
     // ── Generate itinerary via AI ──────────────────────────────────────────────
-    // Disable web search when flights + hotels + (POI or Activities) all covered
+    // Disable web search when we have enough real data — hotels OR activities/POI is sufficient.
+    // Web search adds 30-60s latency and Supabase edge functions have a 60s wall-clock limit.
     const hasActivities = (real?.activities?.length ?? 0) > 0;
-    const hasFullData = !!(real && real.flights.length > 0 && real.hotels.length > 0 && (real.poi.length > 0 || hasActivities));
-    console.log(`Web search: ${hasFullData ? "disabled (full API coverage)" : "enabled (partial/no API data)"}`);
+    const hasPOIData = (real?.poi?.length ?? 0) > 0;
+    const hasEnoughData = !!(real && (real.hotels.length > 0 || hasActivities || hasPOIData));
+    console.log(`Web search: ${hasEnoughData ? "disabled (API data present)" : "enabled (no API data)"}`);
 
-    const raw = await callXAI(buildPrompt(form, real), !hasFullData);
+    const raw = await callXAI(buildPrompt(form, real), !hasEnoughData);
     const itinerary = parseAIJSON(raw);
 
     // Canonical overrides (AI formats these inconsistently)
