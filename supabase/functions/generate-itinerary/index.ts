@@ -1017,21 +1017,42 @@ function buildPrompt(form: TripFormData, real: RealData | null): string {
   // ── Real data section ──
   const parts: string[] = ["\n═══ REAL API DATA ═══"];
 
+  // ── Day logistics block ──────────────────────────────────────────────────────
+  // Give the AI complete per-day constraints so it reasons correctly about
+  // activity windows, travel days, hotel dates and checkout time.
   if (hasRealFlights) {
     const bf = real!.flights[0];
-    const lastOutSeg = bf.outSlice.segments[bf.outSlice.segments.length - 1];
+    const firstOutSeg = bf.outSlice.segments[0];
+    const lastOutSeg  = bf.outSlice.segments[bf.outSlice.segments.length - 1];
     const firstRetSeg = bf.retSlice.segments[0];
-    const arrDate = lastOutSeg.arrAt.slice(0, 10);
-    const arrTime = fmtTime(lastOutSeg.arrAt);
-    const retDepTime = fmtTime(firstRetSeg.depAt);
-    const arrDayNum = dates.indexOf(arrDate) + 1; // 1-based day number
-    const arrNote = arrDayNum > 1
-      ? `Outbound arrives Day ${arrDayNum} (${arrDate}) at ${arrTime} local — do NOT schedule activities on Day ${arrDayNum} before ${arrTime}.`
-      : `Outbound arrives Day 1 at ${arrTime} local — do NOT schedule activities on Day 1 before ${arrTime}.`;
-    parts.push(`\nFLIGHTS — auto-injected, DO NOT include flight activities in your JSON.`);
-    parts.push(`  ⚠️  ${arrNote}`);
-    parts.push(`  ⚠️  Return departs Day ${numDays} at ${retDepTime} local — do NOT schedule activities on Day ${numDays} after ${retDepTime}.`);
-    parts.push(`Pre-selected:\n${flightLine(bf)}`);
+    const outDepTime  = fmtTime(firstOutSeg.depAt);
+    const outArrDate  = lastOutSeg.arrAt.slice(0, 10);
+    const outArrTime  = fmtTime(lastOutSeg.arrAt);
+    const retDepTime  = fmtTime(firstRetSeg.depAt);
+    const arrDayNum   = Math.max(1, dates.indexOf(outArrDate) + 1);
+    const isOvernight = arrDayNum > 1;
+
+    // Checkout time = 2h before return dep, min 10:00
+    const [rh, rm] = retDepTime.split(":").map(Number);
+    const coMins = Math.max(10 * 60, rh * 60 + rm - 120);
+    const checkoutTime = `${String(Math.floor(coMins / 60)).padStart(2, "0")}:${String(coMins % 60).padStart(2, "0")}`;
+
+    parts.push(`\nFLIGHTS (auto-injected — DO NOT include flight or transport-to-airport activities):`);
+    parts.push(flightLine(bf));
+
+    parts.push(`\n📅 DAY LOGISTICS — follow these constraints exactly when scheduling activities:`);
+    if (isOvernight) {
+      parts.push(`  Day 1  (${dates[0]}): DEPARTURE ONLY — flight leaves ${form.departure_city} at ${outDepTime}. Max 1–2 pre-flight activities (breakfast, taxi). Nothing after ${outDepTime}.`);
+      parts.push(`  Day ${arrDayNum} (${outArrDate}): ARRIVAL — lands ${form.destination_city} at ${outArrTime} local. Tired travellers — only airport transfer, hotel check-in, and a late meal. Start activities from ${outArrTime} onward, 1–2 items max.`);
+    } else {
+      parts.push(`  Day 1  (${dates[0]}): Flight arrives ${form.destination_city} at ${outArrTime} local. First activities start after ${outArrTime} (airport transfer → hotel check-in → first activity).`);
+    }
+    parts.push(`  Day ${numDays} (${dates[numDays - 1]}): DEPARTURE — return flight at ${retDepTime}. Hotel checkout by ${checkoutTime}. Airport transfer after checkout. Zero sightseeing activities after ${checkoutTime}.`);
+    if (bf.outSlice.stops > 0) {
+      const layoverAirports = bf.outSlice.segments.slice(0, -1).map(s => `${s.arrName} (${s.arrIata})`).join(", ");
+      parts.push(`  Layover via ${layoverAirports} — these are transit stops, not destinations. Do not schedule activities there.`);
+    }
+
     if (real!.flights.length > 1) {
       parts.push(`Other options (reference only):\n${real!.flights.slice(1).map(f => flightLine(f)).join("\n")}`);
     }
@@ -1040,13 +1061,26 @@ function buildPrompt(form: TripFormData, real: RealData | null): string {
   }
 
   if (hasRealHotels) {
-    parts.push(`\nHOTELS — pre-selected option A (cheapest). DO NOT include accommodation activities — auto-injected.`);
-    parts.push(`Pre-selected:\n${hotelLine(bestHotel!)}`);
+    const h = bestHotel!;
+    parts.push(`\nHOTEL (auto-injected — DO NOT include accommodation activities):`);
+    parts.push(`  ${h.name} — check-in ${h.checkInDate}, check-out ${h.checkOutDate} (${h.nights} nights)`);
+    parts.push(hotelLine(h));
     if (real!.hotels.length > 1) {
       parts.push(`Other options (reference only):\n${real!.hotels.slice(1).map(h => hotelLine(h)).join("\n")}`);
     }
+  } else if (hasRealFlights) {
+    // Derive hotel dates from real flight timestamps so the AI generates correct values
+    const bf = real!.flights[0];
+    const checkInDate  = bf.outSlice.segments[bf.outSlice.segments.length - 1].arrAt.slice(0, 10);
+    const checkOutDate = bf.retSlice.segments[0].depAt.slice(0, 10);
+    const hotelNights  = nightsBetween(checkInDate, checkOutDate);
+    const [rh2, rm2]   = fmtTime(bf.retSlice.segments[0].depAt).split(":").map(Number);
+    const coMins2      = Math.max(10 * 60, rh2 * 60 + rm2 - 120);
+    const checkoutTime2 = `${String(Math.floor(coMins2 / 60)).padStart(2, "0")}:${String(coMins2 % 60).padStart(2, "0")}`;
+    parts.push(`\nNo live hotel data — include check-in and check-out in your JSON with these exact values:`);
+    parts.push(`  check-in date: ${checkInDate} at 15:00 | check-out date: ${checkOutDate} at ${checkoutTime2} | nights: ${hotelNights}`);
   } else {
-    parts.push(`\nNo live hotel data — include check-in and check-out activities in your JSON.`);
+    parts.push(`\nNo live hotel data — include check-in (Day 1 after flight) and check-out (last day before return flight) in your JSON.`);
   }
 
   if (hasActivities) {
@@ -1191,15 +1225,13 @@ ${realSection}
 }
 
 # RULES
-${skipNote ? `0. ${skipNote}\n` : ""}1. ${hasRealFlights ? "Day 1 first non-flight activity should be airport transfer or arrival meal" : "Day 1 MUST start with outbound flight from " + form.departure_city}
-2. ${hasRealFlights ? "Last day last non-flight activity should be airport departure prep" : "Last day MUST end with return flight to " + form.departure_city}
-3. ${hasRealHotels ? "Do NOT include accommodation activities" : `Include check-in Day 1 (after flight) and check-out Day ${numDays} (before return flight)`}
-4. 3–5 activities per day (excluding auto-injected cards), times 24h HH:MM strictly increasing
-5. All activity costs per person in USD, realistic for ${form.destination_city} at comfort ${form.comfort_level}/5
-6. Cluster activities geographically to minimize travel time within each day
-7. Fill type-specific fields: cuisine+reservation_required for dining, operator+arrival_station for non-flight transport, tickets_required for sightseeing
-8. Adapt to group type: ${form.group_type}
-9. No markdown fences, no text outside the JSON`;
+${skipNote ? `0. ${skipNote}\n` : ""}1. Respect the Day Logistics constraints above — they are hard limits on activity windows
+2. 3–5 activities per day (excluding auto-injected cards), times 24h HH:MM strictly increasing
+3. All activity costs per person in USD, realistic for ${form.destination_city} at comfort ${form.comfort_level}/5
+4. Cluster activities geographically to minimise travel time within each day
+5. Fill type-specific fields: cuisine+reservation_required for dining, operator+arrival_station for non-flight transport, tickets_required for sightseeing
+6. Adapt to group type: ${form.group_type}
+7. No markdown fences, no text outside the JSON`;
 }
 
 // ─── Regen Day Prompt ─────────────────────────────────────────────────────────
